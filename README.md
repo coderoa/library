@@ -1,2 +1,4 @@
 # library
-Team project in cp2. Library management system.
+Team project in Object-Oriented Programming, Computer Programming 2 in Java.
+Project specification: Library management system.
+Team members: Abror, Inomjon, Nurshod, Ozodbek, Yusuf
