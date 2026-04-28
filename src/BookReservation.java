@@ -1,35 +1,41 @@
-import enums.ReservationStatus;
-import java.util.Date;
+import java.time.LocalDate;
 
 public class BookReservation {
-    private Date creationDate;
+    private final String id;
+    private final Book book;
+    private final MemberAccount member;
+    private final LocalDate createdOn;
     private ReservationStatus status;
-    private String bookItemBarcode;
-    private String memberId;
 
-    //Constructor
-    public BookReservation(Date creationDate, ReservationStatus status,  String bookItemBarcode, String memberId) {
-        this.creationDate = creationDate;
+    public BookReservation(String id, Book book, MemberAccount member, LocalDate createdOn, ReservationStatus status) {
+        this.id = id;
+        this.book = book;
+        this.member = member;
+        this.createdOn = createdOn;
         this.status = status;
-        this.bookItemBarcode = bookItemBarcode;
-        this.memberId = memberId;
     }
 
-    //Getters
-    public Date getCreationDate() { return creationDate; }
-    public ReservationStatus getStatus() { return status; }
-    public String getBookItemBarcode() { return bookItemBarcode; }
-    public String getMemberId() { return memberId; }
+    public String getId() {
+        return id;
+    }
 
-    //Setters
-    public void setCreationDate(Date creationDate) { this.creationDate = creationDate; }
-    public void setStatus(ReservationStatus status) { this.status = status; }
-    public void setBookItemBarcode(String bookItemBarcode) { this.bookItemBarcode = bookItemBarcode; }
-    public void setMemberId(String memberId) { this.memberId = memberId; }
+    public Book getBook() {
+        return book;
+    }
 
+    public MemberAccount getMember() {
+        return member;
+    }
 
-    public BookReservation fetchReservationDetails(String barcode) {
-        // logic will be added later
-        return null;
+    public LocalDate getCreatedOn() {
+        return createdOn;
+    }
+
+    public ReservationStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(ReservationStatus status) {
+        this.status = status;
     }
 }

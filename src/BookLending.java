@@ -1,31 +1,54 @@
-import java.util.Date;
+import java.time.LocalDate;
 
 public class BookLending {
-    private Date creationDate;
-    private Date dueDate;
-    private Date returnDate;
-    private String bookItemBarcode;
-    private String memberId;
+    private final String id;
+    private final BookItem bookItem;
+    private final MemberAccount member;
+    private final LocalDate checkoutDate;
+    private LocalDate dueDate;
+    private LocalDate returnDate;
 
-    //Constructor
-    public BookLending(Date creationDate, Date dueDate, String bookItemBarcode, String memberId) {
-        this.creationDate = creationDate;
+    public BookLending(String id, BookItem bookItem, MemberAccount member, LocalDate checkoutDate, LocalDate dueDate) {
+        this.id = id;
+        this.bookItem = bookItem;
+        this.member = member;
+        this.checkoutDate = checkoutDate;
         this.dueDate = dueDate;
-        this.bookItemBarcode = bookItemBarcode;
-        this.memberId = memberId;
     }
 
-    //Getters
-    public Date getCreationDate() { return creationDate; }
-    public Date getDueDate() { return dueDate; }
-    public Date getReturnDate() { return returnDate; }
-    public String getBookItemBarcode() { return bookItemBarcode; }
-    public String getMemberId() { return memberId; }
+    public String getId() {
+        return id;
+    }
 
-    //Setters
-    public void setCreationDate(Date creationDate) { this.creationDate = creationDate; }
-    public void setDueDate(Date dueDate) { this.dueDate = dueDate; }
-    public void setReturnDate(Date returnDate) { this.returnDate = returnDate; }
-    public void setBookItemBarcode(String barcode) { this.bookItemBarcode = barcode; }
-    public void setMemberId(String memberId) { this.memberId = memberId; }
+    public BookItem getBookItem() {
+        return bookItem;
+    }
+
+    public MemberAccount getMember() {
+        return member;
+    }
+
+    public LocalDate getCheckoutDate() {
+        return checkoutDate;
+    }
+
+    public LocalDate getDueDate() {
+        return dueDate;
+    }
+
+    public void setDueDate(LocalDate dueDate) {
+        this.dueDate = dueDate;
+    }
+
+    public LocalDate getReturnDate() {
+        return returnDate;
+    }
+
+    public void setReturnDate(LocalDate returnDate) {
+        this.returnDate = returnDate;
+    }
+
+    public boolean isActive() {
+        return returnDate == null;
+    }
 }

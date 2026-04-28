@@ -1,30 +1,29 @@
-import java.util.Date;
+import java.time.LocalDate;
 
 public class LibraryCard {
-    private String cardNumber;
-    private String barcode;
-    private Date issuedAt;
-    private boolean active;
+    private final String barcode;
+    private final LocalDate issuedOn;
+    private AccountStatus status;
 
-    //Constructor
-    public LibraryCard(String cardNumber, String barcode, Date issuedAt, boolean active) {
-        this.cardNumber = cardNumber;
+    public LibraryCard(String barcode, LocalDate issuedOn, AccountStatus status) {
         this.barcode = barcode;
-        this.issuedAt = issuedAt;
-        this.active = active;
+        this.issuedOn = issuedOn;
+        this.status = status;
     }
 
-    //Getters
-    public String getCardNumber() { return cardNumber; }
-    public String getBarcode() { return barcode; }
-    public Date getIssuedAt() { return issuedAt; }
-    public boolean isActive() { return active; }
+    public String getBarcode() {
+        return barcode;
+    }
 
-    //Setters
-    public void setCardNumber(String cardNumber) { this.cardNumber = cardNumber; }
-    public void setBarcode(String barcode) { this.barcode = barcode; }
-    public void setIssuedAt(Date issuedAt) { this.issuedAt = issuedAt; }
-    public void setActive(boolean active) { this.active = active; }
+    public LocalDate getIssuedOn() {
+        return issuedOn;
+    }
 
+    public AccountStatus getStatus() {
+        return status;
+    }
 
+    public void setStatus(AccountStatus status) {
+        this.status = status;
+    }
 }
