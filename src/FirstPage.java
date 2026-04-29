@@ -5,6 +5,8 @@ import javafx.geometry.*;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import javafx.util.StringConverter;
@@ -110,10 +112,16 @@ public class FirstPage extends Application {
 
         StackPane logoIcon = new StackPane();
         logoIcon.getStyleClass().add("auth-logo-icon");
-        Label letter = new Label("L");
-        letter.setStyle("-fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 30px;");
-        logoIcon.getChildren().add(letter);
 
+// load image (change file name later)
+        Image logo = new Image(getClass().getResourceAsStream("/images/logo.png"));
+
+        ImageView logoView = new ImageView(logo);
+        logoView.setFitWidth(60);   // adjust size
+        logoView.setFitHeight(60);
+        logoView.setPreserveRatio(true);
+
+        logoIcon.getChildren().add(logoView);
         Label libName = new Label(service.getLibrary().getName());
         libName.getStyleClass().add("auth-library-name");
         libName.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
@@ -123,6 +131,7 @@ public class FirstPage extends Application {
         tagline.getStyleClass().add("auth-tagline");
         tagline.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
         tagline.setWrapText(true);
+
 
         Separator sep = new Separator();
         sep.setStyle("-fx-background-color: #2A2D40;");
