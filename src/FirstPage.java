@@ -500,10 +500,17 @@ public class FirstPage extends Application {
         logoArea.setAlignment(Pos.CENTER_LEFT);
 
         StackPane logoIcon = new StackPane();
-        logoIcon.getStyleClass().add("logo-icon");
-        Label logoLetter = new Label("L");
-        logoLetter.setStyle("-fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 17px;");
-        logoIcon.getChildren().add(logoLetter);
+        logoIcon.getStyleClass().add("auth-logo-icon");
+
+// load image (change file name later)
+        Image logo = new Image(getClass().getResourceAsStream("/images/logo.png"));
+
+        ImageView logoView = new ImageView(logo);
+        logoView.setFitWidth(60);   // adjust size
+        logoView.setFitHeight(60);
+        logoView.setPreserveRatio(true);
+
+        logoIcon.getChildren().add(logoView);
 
         VBox logoText = new VBox(2);
         Label libName = new Label(service.getLibrary().getName());
