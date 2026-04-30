@@ -23,6 +23,10 @@ public class Catalog {
         return inventory.stream().filter(item -> contains(item.getBook().getSubject(), query)).toList();
     }
 
+    public List<BookItem> searchByBarcode(String query) {
+        return inventory.stream().filter(item -> contains(item.getBarcode(), query)).toList();
+    }
+
     public List<BookItem> searchByPublicationDate(LocalDate date) {
         return inventory.stream().filter(item -> Objects.equals(item.getBook().getPublicationDate(), date)).toList();
     }

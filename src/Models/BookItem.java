@@ -6,12 +6,21 @@ public class BookItem {
     private final Rack rack;
     private BookStatus status;
     private LocalDate dueDate;
+    private final BookFormat format;
+    private final boolean referenceOnly;
 
-    public BookItem(String barcode, Book book, Rack rack, BookStatus status) {
+    public BookItem(String barcode, Book book, Rack rack, BookStatus status,
+                    BookFormat format, boolean referenceOnly) {
         this.barcode = barcode;
         this.book = book;
         this.rack = rack;
         this.status = status;
+        this.format = format;
+        this.referenceOnly = referenceOnly;
+    }
+
+    public BookItem(String barcode, Book book, Rack rack, BookStatus status) {
+        this(barcode, book, rack, status, BookFormat.HARDCOVER, false);
     }
 
     public String getBarcode() {
@@ -40,5 +49,13 @@ public class BookItem {
 
     public void setDueDate(LocalDate dueDate) {
         this.dueDate = dueDate;
+    }
+
+    public BookFormat getFormat() {
+        return format;
+    }
+
+    public boolean isReferenceOnly() {
+        return referenceOnly;
     }
 }

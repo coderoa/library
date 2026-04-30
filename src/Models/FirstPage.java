@@ -12,13 +12,15 @@ import javafx.stage.Stage;
 import javafx.util.StringConverter;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class FirstPage extends Application {
 
-    private final LibraryService service = SampleDataFactory.create();
+    private LibraryService service;
 
     private Stage primaryStage;
     private final Map<String, String> credentials = new HashMap<>();
@@ -52,6 +54,9 @@ public class FirstPage extends Application {
     private final TableView<BookLending>       myCheckoutsTable     = new TableView<>();
     private final TableView<BookReservation>   myReservationsTable  = new TableView<>();
     private final ListView<String>             myNotifList          = new ListView<>();
+    private final TableView<Fine>              myFinesTable         = new TableView<>();
+    private final Label                        myFineLbl            = new Label();
+    private final Button                       myPayFineBtn         = new Button("Pay Fine");
 
     private final Label totalBooksLbl    = new Label("0");
     private final Label activeMembersLbl = new Label("0");
@@ -69,13 +74,29 @@ public class FirstPage extends Application {
     private int memberSeenNotifCount    = 0;
     private Button librarianNotifBtn;
     private Button memberNotifBtn;
+    private Label  librarianNotifBadgeLabel;
+    private Label  memberNotifBadgeLabel;
 
     @Override
     public void start(Stage stage) {
         this.primaryStage = stage;
-        credentials.put("librarian@library.local", "admin123");
-        credentials.put("alice@example.com", "alice123");
-        credentials.put("bob@example.com",   "bob123");
+
+        try {
+            javafx.scene.image.Image icon = new javafx.scene.image.Image(
+                    getClass().getResourceAsStream("/books.png"));
+            stage.getIcons().add(icon);
+        } catch (Exception ignored) {}
+
+        Address address = new Address("12 Knowledge Ave", "Tashkent", "Tashkent", "100000", "Uzbekistan");
+        Library library = new Library("Code Switchers Library", address);
+        service = new LibraryService(library);
+
+        if (library.getInventory().isEmpty() && library.getLibrarians().isEmpty()) {
+            SampleDataFactory.seed(service, credentials);
+        }
+
+        credentials.putAll(service.loadCredentials());
+
         showLoginScreen();
     }
 
@@ -292,7 +313,7 @@ public class FirstPage extends Application {
                 showMsg(msgLbl, "auth-error", "An account with this email already exists.");
             } else {
                 credentials.put(email, pass);
-                service.registerMember(name, email);
+                service.registerMember(name, email, pass);
                 showMsg(msgLbl, "auth-success", "Account created! You can now sign in.");
                 nameField.clear(); emailField.clear(); passField.clear(); confirmField.clear();
             }
@@ -441,17 +462,20 @@ public class FirstPage extends Application {
         Button notifBtn     = navBtn("🔔  Notifications");
         librarianNotifBtn   = notifBtn;
 
+        librarianNotifBadgeLabel = makeNotifBadge();
+        StackPane notifPane = wrapWithBadge(notifBtn, librarianNotifBadgeLabel);
+
         setActive(catalogBtn);
         catalogBtn.setOnAction(e -> switchTo(catalogBtn,  catalogPanel,       "CATALOG"));
         membersBtn.setOnAction(e -> switchTo(membersBtn,  membersPanel,       "MEMBERS"));
         circBtn.setOnAction(e    -> switchTo(circBtn,     circulationPanel,   "CIRCULATION"));
         notifBtn.setOnAction(e   -> {
             librarianSeenNotifCount = service.getNotifications().size();
-            updateNotifBadge(librarianNotifBtn, "🔔  Notifications", 0);
+            updateNotifBadge(librarianNotifBtn, librarianNotifBadgeLabel, 0);
             switchTo(notifBtn, notificationsPanel, "NOTIFICATIONS");
         });
 
-        nav.getChildren().addAll(catalogBtn, membersBtn, circBtn, notifBtn);
+        nav.getChildren().addAll(catalogBtn, membersBtn, circBtn, notifPane);
         return nav;
     }
 
@@ -476,6 +500,9 @@ public class FirstPage extends Application {
         Button notifBtn   = navBtn("🔔  Notifications");
         memberNotifBtn    = notifBtn;
 
+        memberNotifBadgeLabel = makeNotifBadge();
+        StackPane notifPane = wrapWithBadge(notifBtn, memberNotifBadgeLabel);
+
         setActive(catalogBtn);
         catalogBtn.setOnAction(e -> switchTo(catalogBtn, catalogPanel,       "CATALOG"));
         myBooksBtn.setOnAction(e -> switchTo(myBooksBtn, myBooksPanel,       "MY BOOKS"));
@@ -483,11 +510,11 @@ public class FirstPage extends Application {
             MemberAccount me = currentMember();
             memberSeenNotifCount = me == null ? 0 : (int) service.getNotifications().stream()
                     .filter(n -> n.recipient().equals(me.getName())).count();
-            updateNotifBadge(memberNotifBtn, "🔔  Notifications", 0);
+            updateNotifBadge(memberNotifBtn, memberNotifBadgeLabel, 0);
             switchTo(notifBtn, notificationsPanel, "NOTIFICATIONS");
         });
 
-        nav.getChildren().addAll(catalogBtn, myBooksBtn, notifBtn);
+        nav.getChildren().addAll(catalogBtn, myBooksBtn, notifPane);
 
         sidebar.getChildren().addAll(sidebarLogo(), new Separator(), nav, buildSidebarBottom());
         return sidebar;
@@ -578,7 +605,7 @@ public class FirstPage extends Application {
         searchField.setPrefWidth(300);
 
         ComboBox<String> searchMode = new ComboBox<>(
-                FXCollections.observableArrayList("Title", "Author", "Subject"));
+                FXCollections.observableArrayList("Title", "Author", "Subject", "Barcode"));
         searchMode.setValue("Title");
         searchMode.getStyleClass().add("search-mode-box");
         searchField.setOnAction(e -> {
@@ -649,6 +676,7 @@ public class FirstPage extends Application {
         HBox.setHgrow(sp, Priority.ALWAYS);
         Button exportBtn = new Button("Export CSV");
         exportBtn.getStyleClass().add("btn-ghost");
+        exportBtn.setOnAction(e -> exportCatalogCsv());
         Button addBookBtn = new Button("+ Add Book");
         addBookBtn.getStyleClass().add("btn-primary");
         addBookBtn.setOnAction(e -> showAddBookDialog());
@@ -690,7 +718,9 @@ public class FirstPage extends Application {
         addBtn.getStyleClass().add("btn-primary");
         addBtn.setOnAction(e -> {
             if (!nameField.getText().isBlank() && !emailField.getText().isBlank()) {
-                service.registerMember(nameField.getText(), emailField.getText());
+                String tempPass = java.util.UUID.randomUUID().toString().substring(0, 8);
+                service.registerMember(nameField.getText(), emailField.getText(), tempPass);
+                credentials.put(emailField.getText().trim(), tempPass);
                 nameField.clear(); emailField.clear(); refreshAll();
             }
         });
@@ -945,14 +975,48 @@ public class FirstPage extends Application {
         HBox reserveRow = new HBox(12, memberBookPicker, reserveBtn);
         HBox.setHgrow(memberBookPicker, Priority.ALWAYS);
 
+        myFineLbl.setStyle("-fx-font-size: 13px; -fx-text-fill: #DC2626; -fx-font-weight: bold;");
+        myPayFineBtn.getStyleClass().add("btn-danger");
+        myPayFineBtn.setOnAction(e -> {
+            MemberAccount me = currentMember();
+            if (me != null) {
+                new Alert(Alert.AlertType.INFORMATION, service.payFine(me)).showAndWait();
+                refreshAll();
+            }
+        });
+        HBox fineRow = new HBox(12, myFineLbl, myPayFineBtn);
+        fineRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+
         Label checkoutsLabel = new Label("Currently Checked Out");
         checkoutsLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #1A1A2E;");
 
         myCheckoutsTable.getStyleClass().add("custom-table");
+
+        TableColumn<BookLending, String> returnCol = new TableColumn<>("ACTION");
+        returnCol.setPrefWidth(110);
+        returnCol.setCellFactory(c -> new TableCell<>() {
+            final Button btn = new Button("Return");
+            { btn.getStyleClass().add("btn-danger");
+              btn.setOnAction(e -> {
+                  BookLending lending = getTableView().getItems().get(getIndex());
+                  MemberAccount me = currentMember();
+                  if (me != null) {
+                      String result = service.returnBook(me, lending.getBookItem());
+                      new Alert(Alert.AlertType.INFORMATION, result).showAndWait();
+                      refreshAll();
+                  }
+              }); }
+            @Override protected void updateItem(String s, boolean empty) {
+                super.updateItem(s, empty);
+                setGraphic(empty ? null : btn); setText(null);
+            }
+        });
+
         myCheckoutsTable.getColumns().setAll(
             col("TITLE",    220, d -> new ReadOnlyStringWrapper(d.getValue().getBookItem().getBook().getTitle())),
             col("BARCODE",  120, d -> new ReadOnlyStringWrapper(d.getValue().getBookItem().getBarcode())),
-            col("DUE DATE", 130, d -> new ReadOnlyStringWrapper(String.valueOf(d.getValue().getDueDate())))
+            col("DUE DATE", 130, d -> new ReadOnlyStringWrapper(String.valueOf(d.getValue().getDueDate()))),
+            returnCol
         );
         myCheckoutsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         myCheckoutsTable.setPlaceholder(new Label("No books currently checked out."));
@@ -991,7 +1055,7 @@ public class FirstPage extends Application {
         myReservationsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         myReservationsTable.setPlaceholder(new Label("No reservations."));
 
-        panel.getChildren().addAll(title, reserveRow, checkoutsLabel, myCheckoutsTable, reservationsLabel, myReservationsTable);
+        panel.getChildren().addAll(title, reserveRow, fineRow, checkoutsLabel, myCheckoutsTable, reservationsLabel, myReservationsTable);
         return panel;
     }
 
@@ -1034,11 +1098,13 @@ public class FirstPage extends Application {
         });
 
         List<TableColumn<BookItem, String>> cols = new java.util.ArrayList<>(List.of(
-            col("BARCODE", 110, d -> new ReadOnlyStringWrapper(d.getValue().getBarcode())),
-            col("TITLE",   190, d -> new ReadOnlyStringWrapper(d.getValue().getBook().getTitle())),
-            col("AUTHOR",  160, d -> new ReadOnlyStringWrapper(d.getValue().getBook().getAuthorNames())),
-            col("SUBJECT", 130, d -> new ReadOnlyStringWrapper(d.getValue().getBook().getSubject())),
-            col("RACK",     70, d -> new ReadOnlyStringWrapper(d.getValue().getRack().toString())),
+            col("BARCODE",    110, d -> new ReadOnlyStringWrapper(d.getValue().getBarcode())),
+            col("TITLE",      180, d -> new ReadOnlyStringWrapper(d.getValue().getBook().getTitle())),
+            col("AUTHOR",     150, d -> new ReadOnlyStringWrapper(d.getValue().getBook().getAuthorNames())),
+            col("SUBJECT",    110, d -> new ReadOnlyStringWrapper(d.getValue().getBook().getSubject())),
+            col("FORMAT",      90, d -> new ReadOnlyStringWrapper(d.getValue().getFormat().name())),
+            col("REF ONLY",    70, d -> new ReadOnlyStringWrapper(d.getValue().isReferenceOnly() ? "Yes" : "No")),
+            col("RACK",        70, d -> new ReadOnlyStringWrapper(d.getValue().getRack().toString())),
             status
         ));
 
@@ -1082,12 +1148,17 @@ public class FirstPage extends Application {
         TextField barcodeField   = dialogField("Barcode");
         TextField rackField      = dialogField("Rack label");
         TextField locationField  = dialogField("Location");
+        ComboBox<BookFormat> formatBox = new ComboBox<>(
+                FXCollections.observableArrayList(BookFormat.values()));
+        formatBox.setValue(BookFormat.HARDCOVER);
+        CheckBox refOnlyBox = new CheckBox("Reference only");
 
-        grid.addRow(0, new Label("ISBN:"),     isbnField,    new Label("Title:"),     titleField);
-        grid.addRow(1, new Label("Subject:"),  subjectField, new Label("Publisher:"), publisherField);
-        grid.addRow(2, new Label("Author:"),   authorField,  new Label("Pub. Date:"), dateField);
-        grid.addRow(3, new Label("Barcode:"),  barcodeField, new Label("Rack:"),      rackField);
-        grid.addRow(4, new Label("Location:"), locationField);
+        grid.addRow(0, new Label("ISBN:"),      isbnField,    new Label("Title:"),     titleField);
+        grid.addRow(1, new Label("Subject:"),   subjectField, new Label("Publisher:"), publisherField);
+        grid.addRow(2, new Label("Author:"),    authorField,  new Label("Pub. Date:"), dateField);
+        grid.addRow(3, new Label("Barcode:"),   barcodeField, new Label("Rack:"),      rackField);
+        grid.addRow(4, new Label("Location:"),  locationField, new Label("Format:"),   formatBox);
+        grid.addRow(5, refOnlyBox);
         dialog.getDialogPane().setContent(grid);
 
         dialog.showAndWait().ifPresent(result -> {
@@ -1096,9 +1167,10 @@ public class FirstPage extends Application {
                     Book book = new Book(isbnField.getText(), titleField.getText(),
                             subjectField.getText(), publisherField.getText(),
                             LocalDate.parse(dateField.getText()),
-                            List.of(new Author(authorField.getText(), "")));
+                            List.of(new Author(java.util.UUID.randomUUID().toString(), authorField.getText())));
                     service.addBookItem(new BookItem(barcodeField.getText(), book,
-                            new Rack(rackField.getText(), locationField.getText()), BookStatus.AVAILABLE));
+                            new Rack(rackField.getText(), locationField.getText()),
+                            BookStatus.AVAILABLE, formatBox.getValue(), refOnlyBox.isSelected()));
                     refreshAll();
                 } catch (Exception ex) {
                     new Alert(Alert.AlertType.ERROR, "Invalid input. Check the date format (YYYY-MM-DD).").showAndWait();
@@ -1120,9 +1192,10 @@ public class FirstPage extends Application {
 
         if (isLibrarian) {
             int libUnread = service.getNotifications().size() - librarianSeenNotifCount;
-            updateNotifBadge(librarianNotifBtn, "🔔  Notifications", libUnread);
+            updateNotifBadge(librarianNotifBtn, librarianNotifBadgeLabel, libUnread);
 
             catalogTable.setItems(FXCollections.observableArrayList(service.getLibrary().getInventory()));
+            catalogTable.refresh();
             memberTable.setItems(FXCollections.observableArrayList(
                     service.getLibrary().getMembers().stream()
                             .filter(m -> m.getStatus() == AccountStatus.ACTIVE)
@@ -1150,12 +1223,16 @@ public class FirstPage extends Application {
                 long memberTotal = service.getNotifications().stream()
                         .filter(n -> n.recipient().equals(me.getName())).count();
                 int memberUnread = (int) memberTotal - memberSeenNotifCount;
-                updateNotifBadge(memberNotifBtn, "🔔  Notifications", memberUnread);
+                updateNotifBadge(memberNotifBtn, memberNotifBadgeLabel, memberUnread);
             }
             memberCatalogTable.setItems(FXCollections.observableArrayList(service.getLibrary().getInventory()));
+            memberCatalogTable.refresh();
             memberBookPicker.setItems(FXCollections.observableArrayList(
                     service.getLibrary().getInventory().stream().map(BookItem::getBook).distinct().toList()));
             if (me != null) {
+                double fine = me.getOutstandingFine();
+                myFineLbl.setText(fine > 0 ? "Outstanding fine: $" + fine : "No outstanding fine");
+                myPayFineBtn.setVisible(fine > 0);
                 myCheckoutsTable.setItems(FXCollections.observableArrayList(
                         service.getLendings().stream()
                                 .filter(BookLending::isActive)
@@ -1185,19 +1262,32 @@ public class FirstPage extends Application {
                 .findFirst().orElse(null);
     }
 
-    private void updateNotifBadge(Button btn, String baseText, int unread) {
-        if (btn == null) return;
-        btn.setText(baseText);
+    private Label makeNotifBadge() {
+        Label b = new Label("0");
+        b.setStyle("-fx-background-color: #DC2626; -fx-text-fill: white; "
+                + "-fx-font-size: 10px; -fx-font-weight: bold; "
+                + "-fx-background-radius: 10px; -fx-padding: 2px 7px; "
+                + "-fx-min-width: 20px; -fx-alignment: center;");
+        b.setVisible(false);
+        b.setMouseTransparent(true);
+        return b;
+    }
+
+    private StackPane wrapWithBadge(Button btn, Label badge) {
+        StackPane pane = new StackPane(btn, badge);
+        pane.setMaxWidth(Double.MAX_VALUE);
+        StackPane.setAlignment(badge, Pos.CENTER_RIGHT);
+        StackPane.setMargin(badge, new Insets(0, 18, 0, 0));
+        return pane;
+    }
+
+    private void updateNotifBadge(Button btn, Label badge, int unread) {
+        if (btn == null || badge == null) return;
         if (unread > 0) {
-            Label badge = new Label(String.valueOf(unread));
-            badge.setStyle("-fx-background-color: #DC2626; -fx-text-fill: white; "
-                    + "-fx-font-size: 10px; -fx-font-weight: bold; "
-                    + "-fx-background-radius: 8px; -fx-padding: 1px 6px;");
-            btn.setGraphic(badge);
-            btn.setContentDisplay(javafx.scene.control.ContentDisplay.RIGHT);
+            badge.setText(String.valueOf(unread));
+            badge.setVisible(true);
         } else {
-            btn.setGraphic(null);
-            btn.setContentDisplay(javafx.scene.control.ContentDisplay.LEFT);
+            badge.setVisible(false);
         }
     }
 
@@ -1216,6 +1306,32 @@ public class FirstPage extends Application {
             @Override public String toString(T o)   { return o == null ? "" : toStr.apply(o); }
             @Override public T fromString(String s) { return null; }
         };
+    }
+
+    private void exportCatalogCsv() {
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle("Save Catalog CSV");
+        chooser.setInitialFileName("catalog.csv");
+        chooser.getExtensionFilters().add(
+                new javafx.stage.FileChooser.ExtensionFilter("CSV Files", "*.csv"));
+        java.io.File file = chooser.showSaveDialog(primaryStage);
+        if (file == null) return;
+        try (java.io.PrintWriter pw = new java.io.PrintWriter(file, java.nio.charset.StandardCharsets.UTF_8)) {
+            pw.println("BARCODE,TITLE,AUTHOR,SUBJECT,PUBLISHER,STATUS,RACK");
+            for (BookItem item : service.getLibrary().getInventory()) {
+                pw.printf("\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"%n",
+                        item.getBarcode(),
+                        item.getBook().getTitle(),
+                        item.getBook().getAuthorNames(),
+                        item.getBook().getSubject(),
+                        item.getBook().getPublisher(),
+                        item.getStatus().name(),
+                        item.getRack().toString());
+            }
+            new Alert(Alert.AlertType.INFORMATION, "Exported " + service.getLibrary().getInventory().size() + " books to " + file.getName()).showAndWait();
+        } catch (Exception ex) {
+            new Alert(Alert.AlertType.ERROR, "Export failed: " + ex.getMessage()).showAndWait();
+        }
     }
 
     private TextField dialogField(String prompt) {
