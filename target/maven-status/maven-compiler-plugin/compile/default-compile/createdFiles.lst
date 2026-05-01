@@ -4,6 +4,7 @@ Fine.class
 BookStatus.class
 Catalog.class
 Account.class
+BookReviewDAO.class
 FirstPage$4.class
 BookReservation.class
 Rack.class
@@ -21,10 +22,12 @@ Book.class
 MemberAccount.class
 Main.class
 BookItem.class
+FirstPage$9.class
 SampleDataFactory.class
 Notification.class
 FirstPage$7.class
 Exceptions/MemberAccountBlacklistedException.class
 LibrarianAccount.class
+FirstPage$10.class
 Author.class
 FirstPage$3.class

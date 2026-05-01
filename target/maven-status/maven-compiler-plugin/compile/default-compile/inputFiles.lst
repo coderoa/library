@@ -15,6 +15,7 @@
 /home/abror/IdeaProjects/library commit/library/src/Models/Notification.java
 /home/abror/IdeaProjects/library commit/library/src/database/LibraryCardDAO.java
 /home/abror/IdeaProjects/library commit/library/src/database/AuthorDAO.java
+/home/abror/IdeaProjects/library commit/library/src/database/BookReviewDAO.java
 /home/abror/IdeaProjects/library commit/library/src/database/LibrarianDAO.java
 /home/abror/IdeaProjects/library commit/library/src/database/BookDAO.java
 /home/abror/IdeaProjects/library commit/library/src/Models/Address.java
