@@ -10,14 +10,21 @@ public class Book {
     private String publisher;
     private final LocalDate publicationDate;
     private final List<Author> authors;
+    private final String coverImagePath;
 
     public Book(String isbn, String title, String subject, String publisher, LocalDate publicationDate, List<Author> authors) {
+        this(isbn, title, subject, publisher, publicationDate, authors, null);
+    }
+
+    public Book(String isbn, String title, String subject, String publisher, LocalDate publicationDate,
+                List<Author> authors, String coverImagePath) {
         this.isbn = isbn;
         this.title = title;
         this.subject = subject;
         this.publisher = publisher;
         this.publicationDate = publicationDate;
         this.authors = List.copyOf(authors);
+        this.coverImagePath = coverImagePath;
     }
 
     public String getIsbn() {
@@ -54,6 +61,10 @@ public class Book {
 
     public List<Author> getAuthors() {
         return authors;
+    }
+
+    public String getCoverImagePath() {
+        return coverImagePath;
     }
 
     public String getAuthorNames() {

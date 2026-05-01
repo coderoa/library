@@ -83,7 +83,7 @@ public class FirstPage extends Application {
 
         try {
             javafx.scene.image.Image icon = new javafx.scene.image.Image(
-                    getClass().getResourceAsStream("/books.png"));
+                    getClass().getResourceAsStream("/images/logo.png"));
             stage.getIcons().add(icon);
         } catch (Exception ignored) {}
 
@@ -1079,6 +1079,23 @@ public class FirstPage extends Application {
     private void setupCatalogTable(TableView<BookItem> table, boolean withActions) {
         table.getStyleClass().add("custom-table");
 
+        TableColumn<BookItem, String> cover = new TableColumn<>("COVER");
+        cover.setPrefWidth(78);
+        cover.setCellValueFactory(d -> new ReadOnlyStringWrapper(d.getValue().getBook().getIsbn()));
+        cover.setCellFactory(c -> new TableCell<>() {
+            @Override protected void updateItem(String s, boolean empty) {
+                super.updateItem(s, empty);
+                if (empty) {
+                    setGraphic(null);
+                    setText(null);
+                    return;
+                }
+                BookItem item = getTableView().getItems().get(getIndex());
+                setGraphic(createBookCoverView(item.getBook(), 42, 56));
+                setText(null);
+            }
+        });
+
         TableColumn<BookItem, String> status = new TableColumn<>("STATUS");
         status.setPrefWidth(120);
         status.setCellValueFactory(d -> new ReadOnlyStringWrapper(d.getValue().getStatus().name()));
@@ -1098,6 +1115,7 @@ public class FirstPage extends Application {
         });
 
         List<TableColumn<BookItem, String>> cols = new java.util.ArrayList<>(List.of(
+            cover,
             col("BARCODE",    110, d -> new ReadOnlyStringWrapper(d.getValue().getBarcode())),
             col("TITLE",      180, d -> new ReadOnlyStringWrapper(d.getValue().getBook().getTitle())),
             col("AUTHOR",     150, d -> new ReadOnlyStringWrapper(d.getValue().getBook().getAuthorNames())),
@@ -1107,6 +1125,22 @@ public class FirstPage extends Application {
             col("RACK",        70, d -> new ReadOnlyStringWrapper(d.getValue().getRack().toString())),
             status
         ));
+
+        TableColumn<BookItem, String> view = new TableColumn<>("VIEW");
+        view.setPrefWidth(82);
+        view.setCellFactory(c -> new TableCell<>() {
+            final Button btn = new Button("View");
+            {
+                btn.getStyleClass().add("btn-ghost");
+                btn.setOnAction(e -> showBookDetails(getTableView().getItems().get(getIndex())));
+            }
+            @Override protected void updateItem(String s, boolean empty) {
+                super.updateItem(s, empty);
+                setGraphic(empty ? null : btn);
+                setText(null);
+            }
+        });
+        cols.add(view);
 
         if (withActions) {
             TableColumn<BookItem, String> actions = new TableColumn<>("ACTIONS");
@@ -1126,6 +1160,97 @@ public class FirstPage extends Application {
         table.getColumns().setAll(cols);
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         table.setPlaceholder(new Label("No books in inventory."));
+        table.setRowFactory(tv -> {
+            TableRow<BookItem> row = new TableRow<>();
+            row.setOnMouseClicked(event -> {
+                if (event.getClickCount() == 2 && !row.isEmpty()) {
+                    showBookDetails(row.getItem());
+                }
+            });
+            return row;
+        });
+    }
+
+    private ImageView createBookCoverView(Book book, double width, double height) {
+        Image image = loadBookCover(book);
+        ImageView cover = new ImageView(image);
+        cover.setFitWidth(width);
+        cover.setFitHeight(height);
+        cover.setPreserveRatio(true);
+        cover.getStyleClass().add("book-cover-image");
+        cover.setAccessibleText(book.getTitle() + " cover");
+        return cover;
+    }
+
+    private Image loadBookCover(Book book) {
+        String path = book.getCoverImagePath();
+        if (path != null && !path.isBlank()) {
+            Image selected = new Image(new java.io.File(path).toURI().toString(), false);
+            if (!selected.isError()) {
+                return selected;
+            }
+        }
+        return new Image(getClass().getResourceAsStream("/books.png"));
+    }
+
+    private void showBookDetails(BookItem item) {
+        Book book = item.getBook();
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle(book.getTitle());
+        dialog.setHeaderText(null);
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+
+        HBox content = new HBox(22);
+        content.setPadding(new Insets(22));
+        content.getStyleClass().add("book-detail");
+
+        ImageView cover = createBookCoverView(book, 150, 210);
+
+        VBox details = new VBox(12);
+        details.setMinWidth(380);
+
+        Label title = new Label(book.getTitle());
+        title.getStyleClass().add("book-detail-title");
+        title.setWrapText(true);
+
+        Label author = new Label(book.getAuthorNames());
+        author.getStyleClass().add("book-detail-author");
+        author.setWrapText(true);
+
+        GridPane meta = new GridPane();
+        meta.setHgap(12);
+        meta.setVgap(9);
+        addDetailRow(meta, 0, "ISBN", book.getIsbn());
+        addDetailRow(meta, 1, "Subject", book.getSubject());
+        addDetailRow(meta, 2, "Publisher", book.getPublisher());
+        addDetailRow(meta, 3, "Publication", String.valueOf(book.getPublicationDate()));
+        addDetailRow(meta, 4, "Barcode", item.getBarcode());
+        addDetailRow(meta, 5, "Format", item.getFormat().name());
+        addDetailRow(meta, 6, "Rack", item.getRack().toString());
+        addDetailRow(meta, 7, "Reference Only", item.isReferenceOnly() ? "Yes" : "No");
+
+        Label status = new Label(item.getStatus().name());
+        status.getStyleClass().add(switch (item.getStatus().name()) {
+            case "AVAILABLE" -> "badge-available";
+            case "LOANED" -> "badge-loaned";
+            case "RESERVED" -> "badge-reserved";
+            default -> "badge-overdue";
+        });
+
+        details.getChildren().addAll(title, author, status, meta);
+        content.getChildren().addAll(cover, details);
+        dialog.getDialogPane().setContent(content);
+        dialog.showAndWait();
+    }
+
+    private void addDetailRow(GridPane grid, int row, String label, String value) {
+        Label name = new Label(label + ":");
+        name.getStyleClass().add("book-detail-label");
+        Label data = new Label(value == null || value.isBlank() ? "N/A" : value);
+        data.getStyleClass().add("book-detail-value");
+        data.setWrapText(true);
+        grid.add(name, 0, row);
+        grid.add(data, 1, row);
     }
 
 
@@ -1148,6 +1273,22 @@ public class FirstPage extends Application {
         TextField barcodeField   = dialogField("Barcode");
         TextField rackField      = dialogField("Rack label");
         TextField locationField  = dialogField("Location");
+        TextField coverField     = dialogField("No image selected");
+        coverField.setEditable(false);
+        Button chooseCoverBtn = new Button("Choose Image");
+        chooseCoverBtn.getStyleClass().add("btn-ghost");
+        final String[] selectedCoverPath = new String[1];
+        chooseCoverBtn.setOnAction(e -> {
+            javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+            chooser.setTitle("Choose Book Cover");
+            chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
+                    "Image Files", "*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp"));
+            java.io.File file = chooser.showOpenDialog(primaryStage);
+            if (file != null) {
+                selectedCoverPath[0] = file.getAbsolutePath();
+                coverField.setText(file.getName());
+            }
+        });
         ComboBox<BookFormat> formatBox = new ComboBox<>(
                 FXCollections.observableArrayList(BookFormat.values()));
         formatBox.setValue(BookFormat.HARDCOVER);
@@ -1158,7 +1299,8 @@ public class FirstPage extends Application {
         grid.addRow(2, new Label("Author:"),    authorField,  new Label("Pub. Date:"), dateField);
         grid.addRow(3, new Label("Barcode:"),   barcodeField, new Label("Rack:"),      rackField);
         grid.addRow(4, new Label("Location:"),  locationField, new Label("Format:"),   formatBox);
-        grid.addRow(5, refOnlyBox);
+        grid.addRow(5, new Label("Cover:"), coverField, chooseCoverBtn);
+        grid.addRow(6, refOnlyBox);
         dialog.getDialogPane().setContent(grid);
 
         dialog.showAndWait().ifPresent(result -> {
@@ -1167,7 +1309,8 @@ public class FirstPage extends Application {
                     Book book = new Book(isbnField.getText(), titleField.getText(),
                             subjectField.getText(), publisherField.getText(),
                             LocalDate.parse(dateField.getText()),
-                            List.of(new Author(java.util.UUID.randomUUID().toString(), authorField.getText())));
+                            List.of(new Author(java.util.UUID.randomUUID().toString(), authorField.getText())),
+                            selectedCoverPath[0]);
                     service.addBookItem(new BookItem(barcodeField.getText(), book,
                             new Rack(rackField.getText(), locationField.getText()),
                             BookStatus.AVAILABLE, formatBox.getValue(), refOnlyBox.isSelected()));

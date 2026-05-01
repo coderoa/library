@@ -243,7 +243,7 @@
     -fx-background-color: white;
     -fx-border-color: transparent transparent #F9FAFB transparent;
     -fx-border-width: 0 0 1px 0;
-    -fx-cell-size: 52px;
+    -fx-cell-size: 70px;
 }
 
 .custom-table .table-row-cell:odd {
@@ -356,6 +356,36 @@
     -fx-font-size: 13px;
     -fx-text-fill: #374151;
     -fx-control-inner-background: white;
+}
+
+.book-cover-image {
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.14), 8, 0, 0, 2);
+}
+
+.book-detail {
+    -fx-background-color: white;
+}
+
+.book-detail-title {
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1A1A2E;
+}
+
+.book-detail-author {
+    -fx-font-size: 14px;
+    -fx-text-fill: #6B7280;
+}
+
+.book-detail-label {
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #9CA3AF;
+}
+
+.book-detail-value {
+    -fx-font-size: 13px;
+    -fx-text-fill: #374151;
 }
 
 .notif-list {
