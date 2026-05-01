@@ -70,6 +70,8 @@ public class FirstPage extends Application {
 
     private final ComboBox<Book> memberBookPicker = new ComboBox<>();
 
+    private final BookReviewDAO reviewDAO = new BookReviewDAO();
+
     private int librarianSeenNotifCount = 0;
     private int memberSeenNotifCount    = 0;
     private Button librarianNotifBtn;
@@ -683,6 +685,7 @@ public class FirstPage extends Application {
         header.getChildren().addAll(title, sp, exportBtn, addBookBtn);
 
         setupCatalogTable(catalogTable, true);
+        catalogTable.getColumns().add(reviewsButtonCol(catalogTable));
         VBox.setVgrow(catalogTable, Priority.ALWAYS);
         section.getChildren().addAll(header, catalogTable);
 
@@ -941,6 +944,7 @@ public class FirstPage extends Application {
             }
         });
         memberCatalogTable.getColumns().add(reserveCol);
+        memberCatalogTable.getColumns().add(reviewsButtonCol(memberCatalogTable));
         VBox.setVgrow(memberCatalogTable, Priority.ALWAYS);
         section.getChildren().addAll(header, memberCatalogTable);
 
@@ -1449,6 +1453,178 @@ public class FirstPage extends Application {
             @Override public String toString(T o)   { return o == null ? "" : toStr.apply(o); }
             @Override public T fromString(String s) { return null; }
         };
+    }
+
+    private TableColumn<BookItem, String> reviewsButtonCol(TableView<BookItem> table) {
+        TableColumn<BookItem, String> col = new TableColumn<>("REVIEWS");
+        col.setPrefWidth(90);
+        col.setCellFactory(c -> new TableCell<>() {
+            final Button btn = new Button("Reviews");
+            { btn.getStyleClass().add("btn-ghost");
+              btn.setOnAction(e -> showReviewsWindow(table.getItems().get(getIndex()))); }
+            @Override protected void updateItem(String s, boolean empty) {
+                super.updateItem(s, empty);
+                setGraphic(empty ? null : btn); setText(null);
+            }
+        });
+        return col;
+    }
+
+    private void showReviewsWindow(BookItem item) {
+        String isbn = item.getBook().getIsbn();
+        Stage window = new Stage();
+        window.setTitle("Reviews — " + item.getBook().getTitle());
+
+        Label avgLbl = new Label();
+        avgLbl.setStyle("-fx-font-size: 13px; -fx-text-fill: #F5A623; -fx-font-weight: bold;");
+
+        TableView<String[]> reviewsTable = new TableView<>();
+        reviewsTable.getStyleClass().add("custom-table");
+        reviewsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        reviewsTable.setPlaceholder(new Label("No reviews yet. Be the first!"));
+        reviewsTable.setPrefHeight(200);
+
+        // full-comment read-only area, updated on row selection
+        TextArea fullCommentArea = new TextArea();
+        fullCommentArea.setEditable(false);
+        fullCommentArea.setWrapText(true);
+        fullCommentArea.setPrefRowCount(3);
+        fullCommentArea.setPromptText("Select a review above to read the full comment...");
+        fullCommentArea.getStyleClass().add("summary-area");
+        reviewsTable.getSelectionModel().selectedItemProperty().addListener(
+                (obs, old, sel) -> fullCommentArea.setText(sel != null ? sel[3] : ""));
+
+        // form area — rebuilt on every refresh so 1-review rule is always reflected
+        VBox formArea = new VBox(10);
+
+        // holder lets the delete/submit lambdas trigger a full UI refresh
+        Runnable[] holder = {null};
+
+        TableColumn<String[], String> memberCol = new TableColumn<>("MEMBER");
+        memberCol.setPrefWidth(130);
+        memberCol.setCellValueFactory(d -> new ReadOnlyStringWrapper(d.getValue()[1]));
+
+        TableColumn<String[], String> ratingCol = new TableColumn<>("RATING");
+        ratingCol.setPrefWidth(90);
+        ratingCol.setCellValueFactory(d -> {
+            try { return new ReadOnlyStringWrapper("★".repeat(Integer.parseInt(d.getValue()[2]))); }
+            catch (Exception e) { return new ReadOnlyStringWrapper(d.getValue()[2]); }
+        });
+
+        TableColumn<String[], String> commentCol = new TableColumn<>("COMMENT");
+        commentCol.setPrefWidth(270);
+        commentCol.setCellValueFactory(d -> new ReadOnlyStringWrapper(d.getValue()[3]));
+
+        TableColumn<String[], String> dateCol = new TableColumn<>("DATE");
+        dateCol.setPrefWidth(140);
+        dateCol.setCellValueFactory(d -> {
+            String raw = d.getValue()[4];
+            return new ReadOnlyStringWrapper(raw != null && raw.length() > 16 ? raw.substring(0, 16) : raw);
+        });
+
+        TableColumn<String[], String> delCol = new TableColumn<>("");
+        delCol.setPrefWidth(80);
+        delCol.setCellFactory(c -> new TableCell<>() {
+            final Button btn = new Button("Delete");
+            { btn.getStyleClass().add("btn-danger");
+              btn.setOnAction(e -> {
+                  String[] row = getTableView().getItems().get(getIndex());
+                  reviewDAO.deleteReview(Integer.parseInt(row[0]));
+                  fullCommentArea.clear();
+                  if (holder[0] != null) holder[0].run();
+              }); }
+            @Override protected void updateItem(String s, boolean empty) {
+                super.updateItem(s, empty);
+                setGraphic(empty ? null : btn); setText(null);
+            }
+        });
+
+        reviewsTable.getColumns().setAll(memberCol, ratingCol, commentCol, dateCol, delCol);
+
+        // assign the full-refresh runnable
+        holder[0] = () -> {
+            refreshReviews(isbn, reviewsTable, avgLbl);
+            if (!isLibrarian) {
+                formArea.getChildren().clear();
+                MemberAccount me = currentMember();
+                if (me == null) return;
+                if (reviewDAO.hasReviewed(isbn, me.getId())) {
+                    Label alreadyLbl = new Label("You have already reviewed this book.");
+                    alreadyLbl.setStyle("-fx-text-fill: #6B7280; -fx-font-style: italic; -fx-font-size: 13px;");
+                    formArea.getChildren().add(alreadyLbl);
+                } else {
+                    Label formTitle = new Label("Leave a Review");
+                    formTitle.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #1A1A2E;");
+
+                    ComboBox<Integer> ratingCombo = new ComboBox<>();
+                    ratingCombo.getItems().addAll(1, 2, 3, 4, 5);
+                    ratingCombo.setPromptText("Rating (1-5)");
+
+                    TextArea commentInput = new TextArea();
+                    commentInput.setPromptText("Write your comment here...");
+                    commentInput.setPrefRowCount(3);
+                    commentInput.setWrapText(true);
+
+                    Label msgLbl = new Label();
+                    msgLbl.setVisible(false);
+                    msgLbl.setManaged(false);
+                    msgLbl.setMaxWidth(Double.MAX_VALUE);
+
+                    Button submitBtn = new Button("Submit Review");
+                    submitBtn.getStyleClass().add("btn-primary");
+                    submitBtn.setOnAction(ev -> {
+                        if (ratingCombo.getValue() == null) {
+                            showMsg(msgLbl, "auth-error", "Please select a rating.");
+                            return;
+                        }
+                        if (commentInput.getText().isBlank()) {
+                            showMsg(msgLbl, "auth-error", "Please write a comment.");
+                            return;
+                        }
+                        boolean ok = reviewDAO.addReview(isbn, me.getId(),
+                                ratingCombo.getValue(), commentInput.getText().trim());
+                        if (ok) {
+                            holder[0].run();
+                        } else {
+                            showMsg(msgLbl, "auth-error", "Failed to submit review.");
+                        }
+                    });
+
+                    HBox ratingRow = new HBox(10, new Label("Rating:"), ratingCombo);
+                    ratingRow.setAlignment(Pos.CENTER_LEFT);
+                    formArea.getChildren().addAll(new Separator(), formTitle, ratingRow, commentInput, msgLbl, submitBtn);
+                }
+            }
+        };
+        holder[0].run();
+
+        VBox root = new VBox(14);
+        root.setPadding(new Insets(24));
+
+        Label titleLbl = new Label("Reviews for: " + item.getBook().getTitle());
+        titleLbl.getStyleClass().add("section-title");
+
+        Label fullCommentLbl = new Label("Full Comment:");
+        fullCommentLbl.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #6B7280;");
+
+        root.getChildren().addAll(titleLbl, avgLbl, reviewsTable, fullCommentLbl, fullCommentArea, formArea);
+
+        Scene scene = new Scene(root, 740, isLibrarian ? 490 : 660);
+        scene.getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
+        try {
+            window.getIcons().add(new javafx.scene.image.Image(getClass().getResourceAsStream("/books.png")));
+        } catch (Exception ignored) {}
+        window.setScene(scene);
+        window.show();
+    }
+
+    private void refreshReviews(String isbn, TableView<String[]> table, Label avgLbl) {
+        List<String[]> reviews = reviewDAO.getReviewsByBook(isbn);
+        table.setItems(FXCollections.observableArrayList(reviews));
+        double avg = reviewDAO.getAverageRating(isbn);
+        avgLbl.setText(avg > 0
+                ? String.format("Average: %.1f / 5.0  (%d review%s)", avg, reviews.size(), reviews.size() == 1 ? "" : "s")
+                : "No reviews yet");
     }
 
     private void exportCatalogCsv() {
