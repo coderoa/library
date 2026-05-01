@@ -710,24 +710,47 @@ public class FirstPage extends Application {
         TextField nameField  = new TextField();
         nameField.setPromptText("Full name");
         nameField.getStyleClass().add("form-field");
-        nameField.setPrefWidth(150);
+        nameField.setPrefWidth(130);
 
         TextField emailField = new TextField();
         emailField.setPromptText("Email");
         emailField.getStyleClass().add("form-field");
-        emailField.setPrefWidth(180);
+        emailField.setPrefWidth(160);
+
+        TextField passField = new TextField();
+        passField.setPromptText("Password");
+        passField.getStyleClass().add("form-field");
+        passField.setPrefWidth(110);
+
+        ComboBox<String> roleBox = new ComboBox<>();
+        roleBox.getItems().addAll("Member", "Librarian");
+        roleBox.setValue("Member");
+        roleBox.getStyleClass().add("search-mode-box");
 
         Button addBtn = new Button("+ Register");
         addBtn.getStyleClass().add("btn-primary");
         addBtn.setOnAction(e -> {
-            if (!nameField.getText().isBlank() && !emailField.getText().isBlank()) {
-                String tempPass = java.util.UUID.randomUUID().toString().substring(0, 8);
-                service.registerMember(nameField.getText(), emailField.getText(), tempPass);
-                credentials.put(emailField.getText().trim(), tempPass);
-                nameField.clear(); emailField.clear(); refreshAll();
+            String name  = nameField.getText().trim();
+            String email = emailField.getText().trim();
+            String pass  = passField.getText().trim();
+            if (name.isBlank() || email.isBlank() || pass.isBlank()) {
+                new Alert(Alert.AlertType.WARNING, "All fields (name, email, password) are required.").showAndWait();
+                return;
             }
+            if (credentials.containsKey(email)) {
+                new Alert(Alert.AlertType.WARNING, "An account with this email already exists.").showAndWait();
+                return;
+            }
+            if ("Librarian".equals(roleBox.getValue())) {
+                service.registerLibrarian(name, email, pass);
+            } else {
+                service.registerMember(name, email, pass);
+            }
+            credentials.put(email, pass);
+            nameField.clear(); emailField.clear(); passField.clear();
+            refreshAll();
         });
-        header.getChildren().addAll(title, sp, nameField, emailField, addBtn);
+        header.getChildren().addAll(title, sp, nameField, emailField, passField, roleBox, addBtn);
 
         setupMemberTable();
         VBox.setVgrow(memberTable, Priority.ALWAYS);
@@ -934,7 +957,7 @@ public class FirstPage extends Application {
                   MemberAccount me = currentMember();
                   BookItem item = getTableView().getItems().get(getIndex());
                   if (me != null) {
-                      new Alert(Alert.AlertType.INFORMATION, service.reserveBook(me, item.getBook())).showAndWait();
+                      new Alert(Alert.AlertType.INFORMATION, service.reserveBook(me, item)).showAndWait();
                       refreshAll();
                   }
               }); }
@@ -1388,6 +1411,8 @@ public class FirstPage extends Application {
                 myReservationsTable.setItems(FXCollections.observableArrayList(
                         service.getReservations().stream()
                                 .filter(r -> r.getMember() == me)
+                                .filter(r -> r.getStatus() != ReservationStatus.COMPLETED
+                                          && r.getStatus() != ReservationStatus.CANCELED)
                                 .toList()));
                 myNotifList.setItems(FXCollections.observableArrayList(
                         service.getNotifications().stream()

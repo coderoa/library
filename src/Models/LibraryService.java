@@ -129,6 +129,8 @@ public class LibraryService {
     }
 
     public String checkoutReservation(BookReservation reservation) {
+        if (reservation.getStatus() != ReservationStatus.PENDING_PICKUP)
+            return "This reservation is no longer pending pickup.";
         Optional<BookItem> copy = library.getInventory().stream()
                 .filter(i -> i.getBook().getIsbn().equals(reservation.getBook().getIsbn()))
                 .filter(i -> i.getStatus() == BookStatus.AVAILABLE || i.getStatus() == BookStatus.RESERVED)
@@ -178,6 +180,14 @@ public class LibraryService {
     }
 
     public String reserveBook(MemberAccount member, Book book) {
+        return doReserveBook(member, book, null);
+    }
+
+    public String reserveBook(MemberAccount member, BookItem specificItem) {
+        return doReserveBook(member, specificItem.getBook(), specificItem);
+    }
+
+    private String doReserveBook(MemberAccount member, Book book, BookItem preferredItem) {
         boolean alreadyReserved = reservations.stream()
                 .anyMatch(r -> r.getBook().getIsbn().equals(book.getIsbn())
                         && r.getMember() == member
@@ -194,14 +204,16 @@ public class LibraryService {
         reservationDAO.insert(reservation);
 
         if (status == ReservationStatus.PENDING_PICKUP) {
-            library.getInventory().stream()
-                .filter(i -> i.getBook().getIsbn().equals(book.getIsbn()))
-                .filter(i -> i.getStatus() == BookStatus.AVAILABLE)
-                .findFirst()
-                .ifPresent(i -> {
-                    i.setStatus(BookStatus.RESERVED);
-                    bookItemDAO.updateStatus(i);
-                });
+            BookItem toReserve = (preferredItem != null && preferredItem.getStatus() == BookStatus.AVAILABLE)
+                    ? preferredItem
+                    : library.getInventory().stream()
+                            .filter(i -> i.getBook().getIsbn().equals(book.getIsbn()))
+                            .filter(i -> i.getStatus() == BookStatus.AVAILABLE)
+                            .findFirst().orElse(null);
+            if (toReserve != null) {
+                toReserve.setStatus(BookStatus.RESERVED);
+                bookItemDAO.updateStatus(toReserve);
+            }
         }
 
         addNotification(new Notification(member.getName(),

@@ -4,10 +4,12 @@ Fine.class
 BookStatus.class
 Catalog.class
 Account.class
+FirstPage$12.class
 BookReviewDAO.class
 FirstPage$4.class
 BookReservation.class
 Rack.class
+FirstPage$11.class
 FirstPage$2.class
 AccountStatus.class
 Address.class
