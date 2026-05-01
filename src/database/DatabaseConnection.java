@@ -4,9 +4,9 @@ import java.sql.SQLException;
 
 public class DatabaseConnection {
 
-    private static final String URL      = "jdbc:postgresql://localhost:5432/library";
-    private static final String USER     = "postgres";
-    private static final String PASSWORD = "0884";
+    private static final String URL      = "jdbc:postgresql://aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres?sslmode=require";
+    private static final String USER     = "postgres.vcsbzxouqdaispptawmt";
+    private static final String PASSWORD = "5604Asadbek";
 
     public static Connection connect() throws SQLException {
         return DriverManager.getConnection(URL, USER, PASSWORD);
