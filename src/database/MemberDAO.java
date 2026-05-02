@@ -12,33 +12,41 @@ public class MemberDAO {
             """;
 
     public List<MemberAccount> getAll() {
+        if (CacheManager.has("members")) return (List<MemberAccount>) CacheManager.get("members");
         List<MemberAccount> result = new ArrayList<>();
         try (Connection c = DatabaseConnection.connect();
              ResultSet rs = c.createStatement().executeQuery(SELECT_SQL)) {
             while (rs.next()) result.add(build(rs));
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.put("members", result);
         return result;
     }
 
     public Optional<MemberAccount> findByEmail(String email) {
+        String key = "member:" + email;
+        if (CacheManager.has(key)) return (Optional<MemberAccount>) CacheManager.get(key);
+        Optional<MemberAccount> result = Optional.empty();
         try (Connection c = DatabaseConnection.connect();
              PreparedStatement ps = c.prepareStatement(SELECT_SQL + " AND a.email = ?")) {
             ps.setString(1, email);
             try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) return Optional.of(build(rs));
+                if (rs.next()) result = Optional.of(build(rs));
             }
         } catch (SQLException e) { e.printStackTrace(); }
-        return Optional.empty();
+        CacheManager.put(key, result);
+        return result;
     }
 
     /** Returns email → password for all members (used to populate login credentials map). */
     public Map<String, String> getAllCredentials() {
+        if (CacheManager.has("member_credentials")) return (Map<String, String>) CacheManager.get("member_credentials");
         Map<String, String> map = new HashMap<>();
         try (Connection c = DatabaseConnection.connect();
              ResultSet rs = c.createStatement().executeQuery(
                      "SELECT email, password FROM accounts WHERE type = 'MEMBER'")) {
             while (rs.next()) map.put(rs.getString("email"), rs.getString("password"));
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.put("member_credentials", map);
         return map;
     }
 
@@ -58,6 +66,8 @@ public class MemberDAO {
                 ps.executeUpdate();
             }
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.invalidate("members");
+        CacheManager.invalidate("member_credentials");
     }
 
     public void updateStatus(String id, AccountStatus status) {
@@ -66,6 +76,12 @@ public class MemberDAO {
                      "UPDATE accounts SET status=? WHERE id=?")) {
             ps.setString(1, status.name()); ps.setString(2, id); ps.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.invalidate("members");
+        CacheManager.invalidate("lendings");
+        CacheManager.invalidate("lendings_active");
+        CacheManager.invalidate("reservations");
+        CacheManager.invalidate("reservations_active");
+        CacheManager.invalidate("fines");
     }
 
     public void updateFine(String id, double fine) {
@@ -74,6 +90,10 @@ public class MemberDAO {
                      "UPDATE accounts SET outstanding_fine=? WHERE id=?")) {
             ps.setDouble(1, fine); ps.setString(2, id); ps.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.invalidate("members");
+        CacheManager.invalidate("lendings");
+        CacheManager.invalidate("lendings_active");
+        CacheManager.invalidate("fines");
     }
 
     public void delete(String id) {
@@ -82,6 +102,13 @@ public class MemberDAO {
                      "DELETE FROM accounts WHERE id=?")) {
             ps.setString(1, id); ps.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.invalidate("members");
+        CacheManager.invalidate("member_credentials");
+        CacheManager.invalidate("lendings");
+        CacheManager.invalidate("lendings_active");
+        CacheManager.invalidate("reservations");
+        CacheManager.invalidate("reservations_active");
+        CacheManager.invalidate("fines");
     }
 
     private MemberAccount build(ResultSet rs) throws SQLException {

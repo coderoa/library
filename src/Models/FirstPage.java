@@ -1,3 +1,5 @@
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
 import javafx.application.Application;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.collections.FXCollections;
@@ -9,6 +11,7 @@ import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
+import javafx.util.Duration;
 import javafx.util.StringConverter;
 
 import java.time.LocalDate;
@@ -79,6 +82,8 @@ public class FirstPage extends Application {
     private Label  librarianNotifBadgeLabel;
     private Label  memberNotifBadgeLabel;
 
+    private Timeline autoRefreshTimer;
+
     @Override
     public void start(Stage stage) {
         this.primaryStage = stage;
@@ -104,6 +109,7 @@ public class FirstPage extends Application {
 
 
     private void showLoginScreen() {
+        if (autoRefreshTimer != null) { autoRefreshTimer.stop(); autoRefreshTimer = null; }
         formSwapper      = new StackPane();
         loginFormNode    = buildLoginForm();
         registerFormNode = buildRegisterForm();
@@ -433,6 +439,14 @@ public class FirstPage extends Application {
         scene.getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
         primaryStage.setTitle(service.getLibrary().getName());
         primaryStage.setScene(scene);
+
+        autoRefreshTimer = new Timeline(new KeyFrame(Duration.minutes(1), e -> {
+            service.sendOverdueNotifications();
+            service.accumulateOverdueFines();
+            refreshAll();
+        }));
+        autoRefreshTimer.setCycleCount(Timeline.INDEFINITE);
+        autoRefreshTimer.play();
     }
 
 
@@ -1406,11 +1420,11 @@ public class FirstPage extends Application {
                 myCheckoutsTable.setItems(FXCollections.observableArrayList(
                         service.getLendings().stream()
                                 .filter(BookLending::isActive)
-                                .filter(l -> l.getMember() == me)
+                                .filter(l -> l.getMember().getId().equals(me.getId()))
                                 .toList()));
                 myReservationsTable.setItems(FXCollections.observableArrayList(
                         service.getReservations().stream()
-                                .filter(r -> r.getMember() == me)
+                                .filter(r -> r.getMember().getId().equals(me.getId()))
                                 .filter(r -> r.getStatus() != ReservationStatus.COMPLETED
                                           && r.getStatus() != ReservationStatus.CANCELED)
                                 .toList()));
@@ -1560,7 +1574,11 @@ public class FirstPage extends Application {
               }); }
             @Override protected void updateItem(String s, boolean empty) {
                 super.updateItem(s, empty);
-                setGraphic(empty ? null : btn); setText(null);
+                if (empty) { setGraphic(null); setText(null); return; }
+                String[] row = getTableView().getItems().get(getIndex());
+                MemberAccount me = currentMember();
+                boolean canDelete = isLibrarian || (me != null && me.getId().equals(row[5]));
+                setGraphic(canDelete ? btn : null); setText(null);
             }
         });
 
@@ -1683,6 +1701,11 @@ public class FirstPage extends Application {
         f.setPromptText(prompt);
         f.setPrefWidth(180);
         return f;
+    }
+
+    @Override
+    public void stop() {
+        if (service != null) service.persistMemberFines();
     }
 
     public static void main(String[] args) { launch(args); }

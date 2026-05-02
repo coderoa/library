@@ -13,6 +13,7 @@
 /home/abror/IdeaProjects/library commit/library/src/Models/LibraryCard.java
 /home/abror/IdeaProjects/library commit/library/src/Models/Catalog.java
 /home/abror/IdeaProjects/library commit/library/src/Models/Notification.java
+/home/abror/IdeaProjects/library commit/library/src/database/CacheManager.java
 /home/abror/IdeaProjects/library commit/library/src/database/LibraryCardDAO.java
 /home/abror/IdeaProjects/library commit/library/src/database/AuthorDAO.java
 /home/abror/IdeaProjects/library commit/library/src/database/BookReviewDAO.java

@@ -17,6 +17,7 @@ FirstPage$5.class
 LibraryService.class
 FirstPage.class
 BookLending.class
+CacheManager.class
 FirstPage$6.class
 Library.class
 LibraryCard.class

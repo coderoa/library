@@ -14,27 +14,33 @@ public class BookItemDAO {
             """;
 
     public List<BookItem> getAll() {
+        if (CacheManager.has("book_items")) return (List<BookItem>) CacheManager.get("book_items");
         List<BookItem> items = new ArrayList<>();
         try (Connection c = DatabaseConnection.connect();
              ResultSet rs = c.createStatement().executeQuery(SELECT_SQL)) {
             Map<String, List<Author>> authorsMap = BookDAO.loadAllAuthors(c);
             while (rs.next()) items.add(build(rs, authorsMap));
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.put("book_items", items);
         return items;
     }
 
     public Optional<BookItem> findByBarcode(String barcode) {
+        String key = "book_item:" + barcode;
+        if (CacheManager.has(key)) return (Optional<BookItem>) CacheManager.get(key);
+        Optional<BookItem> result = Optional.empty();
         try (Connection c = DatabaseConnection.connect();
              PreparedStatement ps = c.prepareStatement(SELECT_SQL + " WHERE bi.barcode = ?")) {
             ps.setString(1, barcode);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     String isbn = rs.getString("isbn");
-                    return Optional.of(build(rs, Map.of(isbn, BookDAO.loadAuthorsForBook(c, isbn))));
+                    result = Optional.of(build(rs, Map.of(isbn, BookDAO.loadAuthorsForBook(c, isbn))));
                 }
             }
         } catch (SQLException e) { e.printStackTrace(); }
-        return Optional.empty();
+        CacheManager.put(key, result);
+        return result;
     }
 
     public void insert(BookItem item) {
@@ -55,6 +61,8 @@ public class BookItemDAO {
                 ps.executeUpdate();
             }
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.invalidate("book_items");
+        CacheManager.invalidate("books");
     }
 
     public void updateStatus(BookItem item) {
@@ -66,6 +74,10 @@ public class BookItemDAO {
             ps.setString(3, item.getBarcode());
             ps.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.invalidate("book_items");
+        CacheManager.invalidate("book_item:" + item.getBarcode());
+        CacheManager.invalidate("lendings");
+        CacheManager.invalidate("lendings_active");
     }
 
     public void delete(String barcode) {
@@ -74,6 +86,10 @@ public class BookItemDAO {
                      "DELETE FROM book_items WHERE barcode = ?")) {
             ps.setString(1, barcode); ps.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.invalidate("book_items");
+        CacheManager.invalidate("book_item:" + barcode);
+        CacheManager.invalidate("lendings");
+        CacheManager.invalidate("lendings_active");
     }
 
     // ── helpers ───────────────────────────────────────────────────────────

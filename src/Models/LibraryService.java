@@ -283,6 +283,17 @@ public class LibraryService {
         return "Book returned.";
     }
 
+    public void accumulateOverdueFines() {
+        lendings.stream()
+                .filter(BookLending::isActive)
+                .filter(l -> l.getDueDate().isBefore(LocalDate.now()))
+                .forEach(l -> l.getMember().addFine(DAILY_FINE));
+    }
+
+    public void persistMemberFines() {
+        library.getMembers().forEach(m -> memberDAO.updateFine(m.getId(), m.getOutstandingFine()));
+    }
+
     public void sendOverdueNotifications() {
         lendings.stream()
                 .filter(BookLending::isActive)

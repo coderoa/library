@@ -5,6 +5,7 @@ import java.util.*;
 public class BookDAO {
 
     public List<Book> getAll() {
+        if (CacheManager.has("books")) return (List<Book>) CacheManager.get("books");
         List<Book> books = new ArrayList<>();
         try (Connection c = DatabaseConnection.connect();
              ResultSet rs = c.createStatement().executeQuery(
@@ -17,22 +18,27 @@ public class BookDAO {
                         authorsMap.getOrDefault(isbn, List.of())));
             }
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.put("books", books);
         return books;
     }
 
     public Optional<Book> findByIsbn(String isbn) {
+        String key = "book:" + isbn;
+        if (CacheManager.has(key)) return (Optional<Book>) CacheManager.get(key);
+        Optional<Book> result = Optional.empty();
         try (Connection c = DatabaseConnection.connect();
              PreparedStatement ps = c.prepareStatement(
                      "SELECT isbn, title, subject, publisher, publication_date FROM books WHERE isbn = ?")) {
             ps.setString(1, isbn);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next())
-                    return Optional.of(new Book(isbn, rs.getString("title"), rs.getString("subject"),
+                    result = Optional.of(new Book(isbn, rs.getString("title"), rs.getString("subject"),
                             rs.getString("publisher"), rs.getDate("publication_date").toLocalDate(),
                             loadAuthorsForBook(c, isbn)));
             }
         } catch (SQLException e) { e.printStackTrace(); }
-        return Optional.empty();
+        CacheManager.put(key, result);
+        return result;
     }
 
     public void insert(Book book) {
@@ -51,6 +57,8 @@ public class BookDAO {
                 linkBookAuthor(c, book.getIsbn(), a.id());
             }
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.invalidate("books");
+        CacheManager.invalidate("book_items");
     }
 
     public void update(Book book) {
@@ -63,6 +71,9 @@ public class BookDAO {
             ps.setString(4, book.getIsbn());
             ps.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.invalidate("books");
+        CacheManager.invalidate("book:" + book.getIsbn());
+        CacheManager.invalidate("book_items");
     }
 
     public void delete(String isbn) {
@@ -76,6 +87,13 @@ public class BookDAO {
                 ps.setString(1, isbn); ps.executeUpdate();
             }
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.invalidate("books");
+        CacheManager.invalidate("book:" + isbn);
+        CacheManager.invalidate("book_items");
+        CacheManager.invalidate("lendings");
+        CacheManager.invalidate("lendings_active");
+        CacheManager.invalidate("reservations");
+        CacheManager.invalidate("reservations_active");
     }
 
     // ── package-visible helpers reused by BookItemDAO / LendingDAO ────────

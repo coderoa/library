@@ -4,16 +4,20 @@ import java.util.*;
 public class NotificationDAO {
 
     public List<Notification> getAll() {
+        if (CacheManager.has("notifications")) return (List<Notification>) CacheManager.get("notifications");
         List<Notification> result = new ArrayList<>();
         try (Connection c = DatabaseConnection.connect();
              ResultSet rs = c.createStatement().executeQuery(
                      "SELECT recipient, message, created_at FROM notifications ORDER BY id")) {
             while (rs.next()) result.add(build(rs));
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.put("notifications", result);
         return result;
     }
 
     public List<Notification> getByRecipient(String recipient) {
+        String key = "notifications_recipient:" + recipient;
+        if (CacheManager.has(key)) return (List<Notification>) CacheManager.get(key);
         List<Notification> result = new ArrayList<>();
         try (Connection c = DatabaseConnection.connect();
              PreparedStatement ps = c.prepareStatement(
@@ -23,6 +27,7 @@ public class NotificationDAO {
                 while (rs.next()) result.add(build(rs));
             }
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.put(key, result);
         return result;
     }
 
@@ -35,6 +40,8 @@ public class NotificationDAO {
             ps.setTimestamp(3, Timestamp.valueOf(notification.createdAt()));
             ps.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.invalidate("notifications");
+        CacheManager.invalidate("notifications_recipient:" + notification.recipient());
     }
 
     private Notification build(ResultSet rs) throws SQLException {

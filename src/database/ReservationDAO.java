@@ -17,16 +17,26 @@ public class ReservationDAO {
             """;
 
     public List<BookReservation> getAll() {
-        return query(SELECT_SQL, ps -> {});
+        if (CacheManager.has("reservations")) return (List<BookReservation>) CacheManager.get("reservations");
+        List<BookReservation> result = query(SELECT_SQL, ps -> {});
+        CacheManager.put("reservations", result);
+        return result;
     }
 
     public List<BookReservation> getActive() {
-        return query(SELECT_SQL + " WHERE br.status IN ('WAITING','PENDING_PICKUP')", ps -> {});
+        if (CacheManager.has("reservations_active")) return (List<BookReservation>) CacheManager.get("reservations_active");
+        List<BookReservation> result = query(SELECT_SQL + " WHERE br.status IN ('WAITING','PENDING_PICKUP')", ps -> {});
+        CacheManager.put("reservations_active", result);
+        return result;
     }
 
     public List<BookReservation> getByMember(String memberId) {
-        return query(SELECT_SQL + " WHERE br.member_id = ?",
+        String key = "reservations_member:" + memberId;
+        if (CacheManager.has(key)) return (List<BookReservation>) CacheManager.get(key);
+        List<BookReservation> result = query(SELECT_SQL + " WHERE br.member_id = ?",
                 ps -> ps.setString(1, memberId));
+        CacheManager.put(key, result);
+        return result;
     }
 
     public void insert(BookReservation reservation) {
@@ -42,6 +52,9 @@ public class ReservationDAO {
             ps.setString(5, reservation.getStatus().name());
             ps.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.invalidate("reservations");
+        CacheManager.invalidate("reservations_active");
+        CacheManager.invalidate("reservations_member:" + reservation.getMember().getId());
     }
 
     public void updateStatus(String id, ReservationStatus status) {
@@ -50,6 +63,9 @@ public class ReservationDAO {
                      "UPDATE book_reservations SET status=? WHERE id=?")) {
             ps.setString(1, status.name()); ps.setString(2, id); ps.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.invalidate("reservations");
+        CacheManager.invalidate("reservations_active");
+        CacheManager.invalidateByPrefix("reservations_member:");
     }
 
     public void cancel(String id) {

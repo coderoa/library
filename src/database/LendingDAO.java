@@ -21,16 +21,26 @@ public class LendingDAO {
             """;
 
     public List<BookLending> getAll() {
-        return query(SELECT_SQL, ps -> {});
+        if (CacheManager.has("lendings")) return (List<BookLending>) CacheManager.get("lendings");
+        List<BookLending> result = query(SELECT_SQL, ps -> {});
+        CacheManager.put("lendings", result);
+        return result;
     }
 
     public List<BookLending> getActive() {
-        return query(SELECT_SQL + " WHERE bl.return_date IS NULL", ps -> {});
+        if (CacheManager.has("lendings_active")) return (List<BookLending>) CacheManager.get("lendings_active");
+        List<BookLending> result = query(SELECT_SQL + " WHERE bl.return_date IS NULL", ps -> {});
+        CacheManager.put("lendings_active", result);
+        return result;
     }
 
     public List<BookLending> getByMember(String memberId) {
-        return query(SELECT_SQL + " WHERE bl.member_id = ?",
+        String key = "lendings_member:" + memberId;
+        if (CacheManager.has(key)) return (List<BookLending>) CacheManager.get(key);
+        List<BookLending> result = query(SELECT_SQL + " WHERE bl.member_id = ?",
                 ps -> ps.setString(1, memberId));
+        CacheManager.put(key, result);
+        return result;
     }
 
     /** Full history for a member (active and returned). */
@@ -52,6 +62,11 @@ public class LendingDAO {
             ps.setObject(6, lending.getReturnDate() != null ? Date.valueOf(lending.getReturnDate()) : null);
             ps.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.invalidate("lendings");
+        CacheManager.invalidate("lendings_active");
+        CacheManager.invalidate("lendings_member:" + lending.getMember().getId());
+        CacheManager.invalidate("book_items");
+        CacheManager.invalidate("book_item:" + lending.getBookItem().getBarcode());
     }
 
     public void updateReturn(BookLending lending) {
@@ -62,6 +77,9 @@ public class LendingDAO {
             ps.setString(2, lending.getId());
             ps.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.invalidate("lendings");
+        CacheManager.invalidate("lendings_active");
+        CacheManager.invalidate("lendings_member:" + lending.getMember().getId());
     }
 
     public void updateDueDate(BookLending lending) {
@@ -72,6 +90,9 @@ public class LendingDAO {
             ps.setString(2, lending.getId());
             ps.executeUpdate();
         } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.invalidate("lendings");
+        CacheManager.invalidate("lendings_active");
+        CacheManager.invalidate("lendings_member:" + lending.getMember().getId());
     }
 
     // ── helpers ───────────────────────────────────────────────────────────

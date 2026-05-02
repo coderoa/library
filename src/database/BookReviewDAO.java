@@ -25,7 +25,7 @@ public class BookReviewDAO {
     public List<String[]> getReviewsByBook(String bookIsbn) {
         List<String[]> reviews = new ArrayList<>();
         String sql = """
-            SELECT r.id, a.name, r.rating, r.comment, r.created_at
+            SELECT r.id, a.name, r.rating, r.comment, r.created_at, r.member_id
             FROM book_reviews r
             JOIN accounts a ON r.member_id = a.id
             WHERE r.book_isbn = ?
@@ -41,7 +41,8 @@ public class BookReviewDAO {
                     rs.getString("name"),
                     rs.getString("rating"),
                     rs.getString("comment"),
-                    rs.getString("created_at")
+                    rs.getString("created_at"),
+                    rs.getString("member_id")
                 });
             }
         } catch (SQLException e) {
