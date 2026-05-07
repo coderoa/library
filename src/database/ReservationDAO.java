@@ -68,6 +68,18 @@ public class ReservationDAO {
         CacheManager.invalidateByPrefix("reservations_member:");
     }
 
+    public void deleteByMember(String memberId) {
+        try (Connection c = DatabaseConnection.connect();
+             PreparedStatement ps = c.prepareStatement(
+                     "DELETE FROM book_reservations WHERE member_id=?")) {
+            ps.setString(1, memberId);
+            ps.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.invalidate("reservations");
+        CacheManager.invalidate("reservations_active");
+        CacheManager.invalidateByPrefix("reservations_member:");
+    }
+
     public void cancel(String id) {
         updateStatus(id, ReservationStatus.CANCELED);
     }

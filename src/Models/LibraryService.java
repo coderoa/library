@@ -41,6 +41,38 @@ public class LibraryService {
         this.fines         = new ArrayList<>(fineDAO.getAll());
         this.notifications = new ArrayList<>(notificationDAO.getAll());
         this.catalog       = new Catalog(library.getInventory());
+        syncOrphanedBookStatuses();
+    }
+
+    /**
+     * Resets any book_item whose status is LOANED or RESERVED but has no matching
+     * active lending or reservation record. This fixes DB inconsistency caused by
+     * manually deleting lending/reservation rows outside the app.
+     */
+    private void syncOrphanedBookStatuses() {
+        // Collect barcodes that are genuinely loaned
+        java.util.Set<String> activelyLoaned = lendings.stream()
+                .filter(BookLending::isActive)
+                .map(l -> l.getBookItem().getBarcode())
+                .collect(java.util.stream.Collectors.toSet());
+
+        // Collect ISBNs that have an active reservation holding a copy
+        java.util.Set<String> activelyReservedIsbns = reservations.stream()
+                .filter(r -> r.getStatus() == ReservationStatus.PENDING_PICKUP)
+                .map(r -> r.getBook().getIsbn())
+                .collect(java.util.stream.Collectors.toSet());
+
+        for (BookItem item : library.getInventory()) {
+            if (item.getStatus() == BookStatus.LOANED && !activelyLoaned.contains(item.getBarcode())) {
+                item.setStatus(BookStatus.AVAILABLE);
+                item.setDueDate(null);
+                bookItemDAO.updateStatus(item);
+            } else if (item.getStatus() == BookStatus.RESERVED && !activelyReservedIsbns.contains(item.getBook().getIsbn())) {
+                item.setStatus(BookStatus.AVAILABLE);
+                item.setDueDate(null);
+                bookItemDAO.updateStatus(item);
+            }
+        }
     }
 
     public Map<String, String> loadCredentials() {
@@ -115,7 +147,139 @@ public class LibraryService {
         member.getLibraryCard().setStatus(AccountStatus.CANCELED);
         memberDAO.updateStatus(member.getId(), AccountStatus.CANCELED);
         libCardDAO.updateStatus(member.getLibraryCard().getBarcode(), AccountStatus.CANCELED);
+
+        // Collect active reservations first to avoid mutating the list mid-stream
+        List<BookReservation> activeReservations = reservations.stream()
+                .filter(r -> r.getMember().getId().equals(member.getId()))
+                .filter(r -> r.getStatus() != ReservationStatus.CANCELED
+                          && r.getStatus() != ReservationStatus.COMPLETED)
+                .toList();
+
+        for (BookReservation r : activeReservations) {
+            boolean wasHoldingACopy = r.getStatus() == ReservationStatus.PENDING_PICKUP;
+
+            // Cancel the reservation first so nextReservation() won't pick it up
+            r.setStatus(ReservationStatus.CANCELED);
+            reservationDAO.updateStatus(r.getId(), ReservationStatus.CANCELED);
+
+            // Only PENDING_PICKUP reservations had a physical copy held as RESERVED
+            if (wasHoldingACopy) {
+                library.getInventory().stream()
+                        .filter(i -> i.getBook().getIsbn().equals(r.getBook().getIsbn()))
+                        .filter(i -> i.getStatus() == BookStatus.RESERVED)
+                        .findFirst()
+                        .ifPresent(i -> {
+                            // Pass the copy to the next waiting member, or free it
+                            Optional<BookReservation> nextRes = nextReservation(r.getBook());
+                            if (nextRes.isPresent()) {
+                                nextRes.get().setStatus(ReservationStatus.PENDING_PICKUP);
+                                reservationDAO.updateStatus(nextRes.get().getId(), ReservationStatus.PENDING_PICKUP);
+                                addNotification(new Notification(nextRes.get().getMember().getName(),
+                                        "Reserved book now available: " + i.getBook().getTitle(), LocalDateTime.now()));
+                            } else {
+                                i.setStatus(BookStatus.AVAILABLE);
+                            }
+                            bookItemDAO.updateStatus(i); // always persist the status change
+                        });
+            }
+        }
+
+        // Return any currently loaned books
+        new ArrayList<>(member.getCheckedOutItems()).forEach(item -> {
+            activeLending(item).ifPresent(lending -> {
+                lending.setReturnDate(LocalDate.now());
+                lendingDAO.updateReturn(lending);
+            });
+            member.getCheckedOutItems().remove(item);
+            Optional<BookReservation> nextRes = nextReservation(item.getBook());
+            if (nextRes.isPresent()) {
+                item.setStatus(BookStatus.RESERVED);
+                item.setDueDate(null);
+                nextRes.get().setStatus(ReservationStatus.PENDING_PICKUP);
+                reservationDAO.updateStatus(nextRes.get().getId(), ReservationStatus.PENDING_PICKUP);
+                addNotification(new Notification(nextRes.get().getMember().getName(),
+                        "Reserved book now available: " + item.getBook().getTitle(), LocalDateTime.now()));
+            } else {
+                item.setStatus(BookStatus.AVAILABLE);
+                item.setDueDate(null);
+            }
+            bookItemDAO.updateStatus(item);
+        });
+
         addNotification(new Notification(member.getName(), "Membership canceled.", LocalDateTime.now()));
+    }
+
+    public String deleteMember(MemberAccount member) {
+        // Step 1: free all books they reserved (same logic as cancelMembership)
+        List<BookReservation> activeReservations = reservations.stream()
+                .filter(r -> r.getMember().getId().equals(member.getId()))
+                .filter(r -> r.getStatus() != ReservationStatus.CANCELED
+                          && r.getStatus() != ReservationStatus.COMPLETED)
+                .toList();
+
+        for (BookReservation r : activeReservations) {
+            boolean wasHoldingACopy = r.getStatus() == ReservationStatus.PENDING_PICKUP;
+            r.setStatus(ReservationStatus.CANCELED);
+
+            if (wasHoldingACopy) {
+                library.getInventory().stream()
+                        .filter(i -> i.getBook().getIsbn().equals(r.getBook().getIsbn()))
+                        .filter(i -> i.getStatus() == BookStatus.RESERVED)
+                        .findFirst()
+                        .ifPresent(i -> {
+                            Optional<BookReservation> nextRes = nextReservation(r.getBook());
+                            if (nextRes.isPresent()) {
+                                nextRes.get().setStatus(ReservationStatus.PENDING_PICKUP);
+                                reservationDAO.updateStatus(nextRes.get().getId(), ReservationStatus.PENDING_PICKUP);
+                                addNotification(new Notification(nextRes.get().getMember().getName(),
+                                        "Reserved book now available: " + i.getBook().getTitle(), LocalDateTime.now()));
+                            } else {
+                                i.setStatus(BookStatus.AVAILABLE);
+                            }
+                            bookItemDAO.updateStatus(i);
+                        });
+            }
+        }
+
+        // Step 2: return any loaned books
+        new ArrayList<>(member.getCheckedOutItems()).forEach(item -> {
+            activeLending(item).ifPresent(lending -> {
+                lending.setReturnDate(LocalDate.now());
+                lendingDAO.updateReturn(lending);
+            });
+            member.getCheckedOutItems().remove(item);
+            BookItem inventoryItem = library.getInventory().stream()
+                    .filter(i -> i.getBarcode().equals(item.getBarcode()))
+                    .findFirst().orElse(item);
+            Optional<BookReservation> nextRes = nextReservation(item.getBook());
+            if (nextRes.isPresent()) {
+                inventoryItem.setStatus(BookStatus.RESERVED);
+                inventoryItem.setDueDate(null);
+                nextRes.get().setStatus(ReservationStatus.PENDING_PICKUP);
+                reservationDAO.updateStatus(nextRes.get().getId(), ReservationStatus.PENDING_PICKUP);
+                addNotification(new Notification(nextRes.get().getMember().getName(),
+                        "Reserved book now available: " + inventoryItem.getBook().getTitle(), LocalDateTime.now()));
+            } else {
+                inventoryItem.setStatus(BookStatus.AVAILABLE);
+                inventoryItem.setDueDate(null);
+            }
+            bookItemDAO.updateStatus(inventoryItem);
+        });
+
+        // Step 3: delete all DB records
+        fineDAO.deleteByMember(member.getId());
+        lendingDAO.deleteByMember(member.getId());
+        reservationDAO.deleteByMember(member.getId());
+        memberDAO.delete(member.getId());
+        libCardDAO.delete(member.getLibraryCard().getBarcode());
+
+        // Step 4: remove from in-memory lists
+        library.getMembers().remove(member);
+        reservations.removeIf(r -> r.getMember().getId().equals(member.getId()));
+        lendings.removeIf(l -> l.getMember().getId().equals(member.getId()));
+        fines.removeIf(f -> f.memberId().equals(member.getId()));
+
+        return "Member \"" + member.getName() + "\" permanently deleted.";
     }
 
     public void addBookItem(BookItem item) {
@@ -155,7 +319,7 @@ public class LibraryService {
             return "Book item is already checked out.";
         if (item.getStatus() == BookStatus.RESERVED) {
             Optional<BookReservation> reservation = nextReservation(item.getBook());
-            if (reservation.isPresent() && reservation.get().getMember() != member)
+            if (reservation.isPresent() && !reservation.get().getMember().getId().equals(member.getId()))
                 return "Book item is reserved for another member.";
             reservation.ifPresent(r -> {
                 r.setStatus(ReservationStatus.COMPLETED);
@@ -188,9 +352,15 @@ public class LibraryService {
     }
 
     private String doReserveBook(MemberAccount member, Book book, BookItem preferredItem) {
+        if (member == null)
+            return "You must be logged in as a member to reserve a book.";
+        if (member.getStatus() != AccountStatus.ACTIVE)
+            return "Your membership is not active. Only active members can reserve books.";
+        if (member.getLibraryCard().getStatus() != AccountStatus.ACTIVE)
+            return "Your library card is not active. Please contact a librarian.";
         boolean alreadyReserved = reservations.stream()
                 .anyMatch(r -> r.getBook().getIsbn().equals(book.getIsbn())
-                        && r.getMember() == member
+                        && r.getMember().getId().equals(member.getId())
                         && r.getStatus() != ReservationStatus.CANCELED
                         && r.getStatus() != ReservationStatus.COMPLETED);
         if (alreadyReserved)
@@ -227,10 +397,10 @@ public class LibraryService {
         Optional<BookLending> lending = activeLending(item);
         if (lending.isEmpty())
             return "No active lending found for this book item.";
-        if (lending.get().getMember() != member)
+        if (!lending.get().getMember().getId().equals(member.getId()))
             return "Book item is checked out by another member.";
         Optional<BookReservation> nextRes = nextReservation(item.getBook());
-        if (nextRes.isPresent() && nextRes.get().getMember() != member)
+        if (nextRes.isPresent() && !nextRes.get().getMember().getId().equals(member.getId()))
             return "Cannot renew. Another member has reserved this book.";
 
         LocalDate newDueDate = LocalDate.now().plusDays(MAX_LENDING_DAYS);
@@ -248,7 +418,7 @@ public class LibraryService {
         Optional<BookLending> lending = activeLending(item);
         if (lending.isEmpty())
             return "No active lending found for this book item.";
-        if (lending.get().getMember() != member)
+        if (!lending.get().getMember().getId().equals(member.getId()))
             return "Book item belongs to another member.";
 
         lending.get().setReturnDate(LocalDate.now());
@@ -268,18 +438,27 @@ public class LibraryService {
         }
 
         Optional<BookReservation> next = nextReservation(item.getBook());
+
+        // The `item` parameter comes from the lending record (a DAO-built copy),
+        // which is a different object than what's in library.getInventory().
+        // We must update the inventory object directly or the catalog won't reflect the change.
+        BookItem inventoryItem = library.getInventory().stream()
+                .filter(i -> i.getBarcode().equals(item.getBarcode()))
+                .findFirst()
+                .orElse(item);
+
         if (next.isPresent()) {
-            item.setStatus(BookStatus.RESERVED);
-            item.setDueDate(null);
+            inventoryItem.setStatus(BookStatus.RESERVED);
+            inventoryItem.setDueDate(null);
             next.get().setStatus(ReservationStatus.PENDING_PICKUP);
             reservationDAO.updateStatus(next.get().getId(), ReservationStatus.PENDING_PICKUP);
             addNotification(new Notification(next.get().getMember().getName(),
-                "Reserved book now available: " + item.getBook().getTitle(), LocalDateTime.now()));
+                "Reserved book now available: " + inventoryItem.getBook().getTitle(), LocalDateTime.now()));
         } else {
-            item.setStatus(BookStatus.AVAILABLE);
-            item.setDueDate(null);
+            inventoryItem.setStatus(BookStatus.AVAILABLE);
+            inventoryItem.setDueDate(null);
         }
-        bookItemDAO.updateStatus(item);
+        bookItemDAO.updateStatus(inventoryItem);
         return "Book returned.";
     }
 

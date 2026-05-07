@@ -4,7 +4,24 @@ import java.util.*;
 
 public class BookItemDAO {
 
+    /**
+     * Preferred query that attempts to select the cover_image_path column from the books table.
+     * If the schema does not yet have this column, executing this query will throw a
+     * SQLException, in which case callers should fall back to {@link #SELECT_SQL_FALLBACK}.
+     */
     private static final String SELECT_SQL = """
+            SELECT bi.barcode, bi.status, bi.due_date, bi.format, bi.is_reference_only,
+                   bi.rack_number, r.location_identifier,
+                   b.isbn, b.title, b.subject, b.publisher, b.publication_date, b.cover_image_path
+            FROM book_items bi
+            JOIN books b ON bi.book_isbn = b.isbn
+            LEFT JOIN racks r ON bi.rack_number = r.rack_number
+            """;
+
+    /**
+     * Legacy query used when the books table does not have a cover_image_path column.
+     */
+    private static final String SELECT_SQL_FALLBACK = """
             SELECT bi.barcode, bi.status, bi.due_date, bi.format, bi.is_reference_only,
                    bi.rack_number, r.location_identifier,
                    b.isbn, b.title, b.subject, b.publisher, b.publication_date
@@ -16,8 +33,14 @@ public class BookItemDAO {
     public List<BookItem> getAll() {
         if (CacheManager.has("book_items")) return (List<BookItem>) CacheManager.get("book_items");
         List<BookItem> items = new ArrayList<>();
-        try (Connection c = DatabaseConnection.connect();
-             ResultSet rs = c.createStatement().executeQuery(SELECT_SQL)) {
+        try (Connection c = DatabaseConnection.connect()) {
+            ResultSet rs;
+            try {
+                rs = c.createStatement().executeQuery(SELECT_SQL);
+            } catch (SQLException e) {
+                // Fallback for schemas without cover_image_path column
+                rs = c.createStatement().executeQuery(SELECT_SQL_FALLBACK);
+            }
             Map<String, List<Author>> authorsMap = BookDAO.loadAllAuthors(c);
             while (rs.next()) items.add(build(rs, authorsMap));
         } catch (SQLException e) { e.printStackTrace(); }
@@ -29,8 +52,14 @@ public class BookItemDAO {
         String key = "book_item:" + barcode;
         if (CacheManager.has(key)) return (Optional<BookItem>) CacheManager.get(key);
         Optional<BookItem> result = Optional.empty();
-        try (Connection c = DatabaseConnection.connect();
-             PreparedStatement ps = c.prepareStatement(SELECT_SQL + " WHERE bi.barcode = ?")) {
+        try (Connection c = DatabaseConnection.connect()) {
+            PreparedStatement ps;
+            try {
+                ps = c.prepareStatement(SELECT_SQL + " WHERE bi.barcode = ?");
+            } catch (SQLException e) {
+                // Fallback for schemas without cover_image_path column
+                ps = c.prepareStatement(SELECT_SQL_FALLBACK + " WHERE bi.barcode = ?");
+            }
             ps.setString(1, barcode);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
@@ -96,9 +125,15 @@ public class BookItemDAO {
 
     private BookItem build(ResultSet rs, Map<String, List<Author>> authorsMap) throws SQLException {
         String isbn = rs.getString("isbn");
+        String cover = null;
+        try {
+            cover = rs.getString("cover_image_path");
+        } catch (SQLException ignore) {
+            // Column may not exist; leave cover as null.
+        }
         Book book = new Book(isbn, rs.getString("title"), rs.getString("subject"),
                 rs.getString("publisher"), rs.getDate("publication_date").toLocalDate(),
-                authorsMap.getOrDefault(isbn, List.of()));
+                authorsMap.getOrDefault(isbn, List.of()), cover);
         Rack rack = new Rack(rs.getString("rack_number"), rs.getString("location_identifier"));
         BookItem item = new BookItem(rs.getString("barcode"), book, rack,
                 BookStatus.valueOf(rs.getString("status")),

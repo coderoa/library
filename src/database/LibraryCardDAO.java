@@ -37,6 +37,15 @@ public class LibraryCardDAO {
         } catch (SQLException e) { e.printStackTrace(); }
     }
 
+    public void delete(String barcode) {
+        try (Connection c = DatabaseConnection.connect();
+             PreparedStatement ps = c.prepareStatement(
+                     "DELETE FROM library_cards WHERE barcode=?")) {
+            ps.setString(1, barcode);
+            ps.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
     public void updateStatus(String barcode, AccountStatus status) {
         try (Connection c = DatabaseConnection.connect();
              PreparedStatement ps = c.prepareStatement(

@@ -110,6 +110,16 @@ public class FirstPage extends Application {
 
     private void showLoginScreen() {
         if (autoRefreshTimer != null) { autoRefreshTimer.stop(); autoRefreshTimer = null; }
+
+        // Rebuild service fresh from DB on every logout so the next user always sees
+        // up-to-date data (fixes stale in-memory lendings / CacheManager entries).
+        CacheManager.clearAll();
+        Address address = new Address("12 Knowledge Ave", "Tashkent", "Tashkent", "100000", "Uzbekistan");
+        Library freshLibrary = new Library("Code Switchers Library", address);
+        service = new LibraryService(freshLibrary);
+        credentials.clear();
+        credentials.putAll(service.loadCredentials());
+
         formSwapper      = new StackPane();
         loginFormNode    = buildLoginForm();
         registerFormNode = buildRegisterForm();
@@ -773,10 +783,43 @@ public class FirstPage extends Application {
         cancelBtn.getStyleClass().add("btn-danger");
         cancelBtn.setOnAction(e -> {
             MemberAccount sel = memberTable.getSelectionModel().getSelectedItem();
-            if (sel != null) { service.cancelMembership(sel); refreshAll(); }
+            if (sel == null) return;
+            if (sel.getStatus() != AccountStatus.ACTIVE) {
+                new Alert(Alert.AlertType.WARNING, "Membership is already canceled.").showAndWait();
+                return;
+            }
+            service.cancelMembership(sel);
+            refreshAll();
         });
 
-        panel.getChildren().addAll(header, memberTable, cancelBtn);
+        // Gray out Cancel button when a non-active member is selected
+        memberTable.getSelectionModel().selectedItemProperty().addListener((obs, old, sel) -> {
+            cancelBtn.setDisable(sel == null || sel.getStatus() != AccountStatus.ACTIVE);
+        });
+        cancelBtn.setDisable(true);
+
+        Button deleteBtn = new Button("🗑 Delete Member");
+        deleteBtn.getStyleClass().add("btn-danger");
+        deleteBtn.setOnAction(e -> {
+            MemberAccount sel = memberTable.getSelectionModel().getSelectedItem();
+            if (sel == null) return;
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle("Delete Member");
+            confirm.setHeaderText("Permanently delete \"" + sel.getName() + "\"?");
+            confirm.setContentText("This will remove all their records (lendings, reservations, fines) from the database. This cannot be undone.");
+            confirm.showAndWait().ifPresent(btn -> {
+                if (btn == ButtonType.OK) {
+                    String result = service.deleteMember(sel);
+                    credentials.remove(sel.getEmail());
+                    refreshAll();
+                    new Alert(Alert.AlertType.INFORMATION, result).showAndWait();
+                }
+            });
+        });
+
+        HBox memberActions = new HBox(10, cancelBtn, deleteBtn);
+
+        panel.getChildren().addAll(header, memberTable, memberActions);
         return panel;
     }
 
@@ -971,13 +1014,21 @@ public class FirstPage extends Application {
                   MemberAccount me = currentMember();
                   BookItem item = getTableView().getItems().get(getIndex());
                   if (me != null) {
-                      new Alert(Alert.AlertType.INFORMATION, service.reserveBook(me, item)).showAndWait();
+                      String result = service.reserveBook(me, item);
+                      new Alert(Alert.AlertType.INFORMATION, result).showAndWait();
                       refreshAll();
                   }
               }); }
             @Override protected void updateItem(String s, boolean empty) {
                 super.updateItem(s, empty);
-                setGraphic(empty ? null : btn); setText(null);
+                if (empty) { setGraphic(null); return; }
+                MemberAccount me = currentMember();
+                boolean canReserve = me != null && me.getStatus() == AccountStatus.ACTIVE
+                        && me.getLibraryCard().getStatus() == AccountStatus.ACTIVE;
+                btn.setDisable(!canReserve);
+                btn.setOpacity(canReserve ? 1.0 : 0.4);
+                btn.setTooltip(canReserve ? null : new Tooltip("Active membership required to reserve books"));
+                setGraphic(btn); setText(null);
             }
         });
         memberCatalogTable.getColumns().add(reserveCol);
@@ -1007,11 +1058,17 @@ public class FirstPage extends Application {
         reserveBtn.setOnAction(e -> {
             MemberAccount me = currentMember();
             Book book = memberBookPicker.getValue();
-            if (me != null && book != null) {
-                new Alert(Alert.AlertType.INFORMATION, service.reserveBook(me, book)).showAndWait();
-                refreshAll();
-            }
+            if (me == null || book == null) return;
+            String result = service.reserveBook(me, book);
+            new Alert(Alert.AlertType.INFORMATION, result).showAndWait();
+            refreshAll();
         });
+        // Disable reserve if membership/card is not active
+        MemberAccount meNow = currentMember();
+        boolean memberActive = meNow != null && meNow.getStatus() == AccountStatus.ACTIVE
+                && meNow.getLibraryCard().getStatus() == AccountStatus.ACTIVE;
+        reserveBtn.setDisable(!memberActive);
+        if (!memberActive) reserveBtn.setTooltip(new Tooltip("Active membership required to reserve books"));
 
         HBox reserveRow = new HBox(12, memberBookPicker, reserveBtn);
         HBox.setHgrow(memberBookPicker, Priority.ALWAYS);
@@ -1381,9 +1438,7 @@ public class FirstPage extends Application {
             catalogTable.setItems(FXCollections.observableArrayList(service.getLibrary().getInventory()));
             catalogTable.refresh();
             memberTable.setItems(FXCollections.observableArrayList(
-                    service.getLibrary().getMembers().stream()
-                            .filter(m -> m.getStatus() == AccountStatus.ACTIVE)
-                            .toList()));
+                    service.getLibrary().getMembers()));
             memberTable.refresh();
             lendingTable.setItems(FXCollections.observableArrayList(
                     service.getLendings().stream().filter(BookLending::isActive).toList()));

@@ -82,6 +82,18 @@ public class LendingDAO {
         CacheManager.invalidate("lendings_member:" + lending.getMember().getId());
     }
 
+    public void deleteByMember(String memberId) {
+        try (Connection c = DatabaseConnection.connect();
+             PreparedStatement ps = c.prepareStatement(
+                     "DELETE FROM book_lendings WHERE member_id=?")) {
+            ps.setString(1, memberId);
+            ps.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+        CacheManager.invalidate("lendings");
+        CacheManager.invalidate("lendings_active");
+        CacheManager.invalidateByPrefix("lendings_member:");
+    }
+
     public void updateDueDate(BookLending lending) {
         try (Connection c = DatabaseConnection.connect();
              PreparedStatement ps = c.prepareStatement(
