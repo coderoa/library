@@ -132,7 +132,9 @@ public class FirstPage extends Application {
         HBox root = new HBox(buildAuthLeft(), rightWrapper);
         HBox.setHgrow(rightWrapper, Priority.ALWAYS);
 
-        Scene scene = new Scene(root, 1000, 660);
+        root.getStyleClass().add("auth-shell");
+
+        Scene scene = new Scene(root, 1120, 720);
         scene.getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
         primaryStage.setTitle("Sign In — " + service.getLibrary().getName());
         primaryStage.setScene(scene);
@@ -437,15 +439,17 @@ public class FirstPage extends Application {
         }
 
         VBox rightSide = new VBox(buildTopBar(), contentPane);
+        rightSide.getStyleClass().add("main-surface");
         VBox.setVgrow(contentPane, Priority.ALWAYS);
 
         BorderPane root = new BorderPane();
+        root.getStyleClass().add("app-shell");
         root.setLeft(isLibrarian ? buildLibrarianSidebar() : buildMemberSidebar());
         root.setCenter(rightSide);
 
         refreshAll();
 
-        Scene scene = new Scene(root, 1200, 760);
+        Scene scene = new Scene(root, 1360, 820);
         scene.getStylesheets().add(getClass().getResource("/style.css").toExternalForm());
         primaryStage.setTitle(service.getLibrary().getName());
         primaryStage.setScene(scene);
@@ -471,7 +475,7 @@ public class FirstPage extends Application {
     private VBox buildLibrarianSidebar() {
         VBox sidebar = new VBox();
         sidebar.getStyleClass().add("sidebar");
-        sidebar.setPrefWidth(220);
+        sidebar.setPrefWidth(248);
 
         sidebar.getChildren().addAll(sidebarLogo(), new Separator(), buildLibrarianNav(), buildSidebarBottom());
         return sidebar;
@@ -479,7 +483,7 @@ public class FirstPage extends Application {
 
     private VBox buildLibrarianNav() {
         VBox nav = new VBox(2);
-        nav.setPadding(new Insets(8, 0, 0, 0));
+        nav.setPadding(new Insets(10, 14, 0, 0));
         VBox.setVgrow(nav, Priority.NEVER);
 
         Button catalogBtn   = navBtn("📋  Catalog");
@@ -516,10 +520,10 @@ public class FirstPage extends Application {
     private VBox buildMemberSidebar() {
         VBox sidebar = new VBox();
         sidebar.getStyleClass().add("sidebar");
-        sidebar.setPrefWidth(220);
+        sidebar.setPrefWidth(248);
 
         VBox nav = new VBox(2);
-        nav.setPadding(new Insets(8, 0, 0, 0));
+        nav.setPadding(new Insets(10, 14, 0, 0));
 
         Button catalogBtn = navBtn("📋  Catalog");
         Button myBooksBtn = navBtn("📚  My Books");
@@ -549,18 +553,18 @@ public class FirstPage extends Application {
 
     private HBox sidebarLogo() {
         HBox logoArea = new HBox(12);
-        logoArea.setPadding(new Insets(22, 16, 22, 16));
+        logoArea.setPadding(new Insets(24, 18, 26, 18));
         logoArea.setAlignment(Pos.CENTER_LEFT);
 
         StackPane logoIcon = new StackPane();
-        logoIcon.getStyleClass().add("auth-logo-icon");
+        logoIcon.getStyleClass().add("logo-icon");
 
 // load image (change file name later)
         Image logo = new Image(getClass().getResourceAsStream("/images/logo.png"));
 
         ImageView logoView = new ImageView(logo);
-        logoView.setFitWidth(60);   // adjust size
-        logoView.setFitHeight(60);
+        logoView.setFitWidth(34);
+        logoView.setFitHeight(34);
         logoView.setPreserveRatio(true);
 
         logoIcon.getChildren().add(logoView);
@@ -591,7 +595,7 @@ public class FirstPage extends Application {
         newEntryBtn.getStyleClass().add("new-entry-btn");
         newEntryBtn.setMaxWidth(Double.MAX_VALUE);
         newEntryBtn.setOnAction(e -> showAddBookDialog());
-        VBox.setMargin(newEntryBtn, new Insets(4, 16, 24, 16));
+        VBox.setMargin(newEntryBtn, new Insets(10, 18, 18, 18));
 
         VBox bottom = new VBox(spacer, signOutBtn);
         if (isLibrarian) bottom.getChildren().add(newEntryBtn);
@@ -620,15 +624,39 @@ public class FirstPage extends Application {
     }
 
 
-    private HBox buildTopBar() {
-        HBox bar = new HBox(12);
+    private VBox buildTopBar() {
+        VBox bar = new VBox(14);
         bar.getStyleClass().add("top-bar");
         bar.setAlignment(Pos.CENTER_LEFT);
+
+        HBox titleRow = new HBox(16);
+        titleRow.setAlignment(Pos.CENTER_LEFT);
+
+        Label eyebrow = new Label(service.getLibrary().getName());
+        eyebrow.getStyleClass().add("page-eyebrow");
+        VBox titleBlock = new VBox(2, eyebrow, pageTitleLabel);
+
+        Region titleSpacer = new Region();
+        HBox.setHgrow(titleSpacer, Priority.ALWAYS);
+
+        String role = isLibrarian ? "Head Librarian" : "Member";
+        Label avatar = new Label(loggedInName == null || loggedInName.isBlank()
+                ? "U"
+                : loggedInName.substring(0, 1).toUpperCase());
+        avatar.getStyleClass().add("user-avatar");
+        Label userLabel = new Label(loggedInName + "\n" + role);
+        userLabel.getStyleClass().add("librarian-label");
+        userLabel.setTextAlignment(javafx.scene.text.TextAlignment.RIGHT);
+        HBox userPill = new HBox(10, userLabel, avatar);
+        userPill.getStyleClass().add("user-pill");
+        userPill.setAlignment(Pos.CENTER);
+
+        titleRow.getChildren().addAll(titleBlock, titleSpacer, userPill);
 
         TextField searchField = new TextField();
         searchField.setPromptText("Search by title, author, or barcode...");
         searchField.getStyleClass().add("search-field");
-        searchField.setPrefWidth(300);
+        searchField.setPrefWidth(460);
 
         ComboBox<String> searchMode = new ComboBox<>(
                 FXCollections.observableArrayList("Title", "Author", "Subject", "Barcode"));
@@ -640,22 +668,18 @@ public class FirstPage extends Application {
                     service.search(searchMode.getValue(), searchField.getText())));
         });
 
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox searchRow = new HBox(10, searchField, searchMode);
+        searchRow.getStyleClass().add("search-row");
+        searchRow.setAlignment(Pos.CENTER_LEFT);
 
-        String role = isLibrarian ? "HEAD LIBRARIAN" : "MEMBER";
-        Label userLabel = new Label(loggedInName + "\n" + role);
-        userLabel.getStyleClass().add("librarian-label");
-        userLabel.setTextAlignment(javafx.scene.text.TextAlignment.RIGHT);
-
-        bar.getChildren().addAll(pageTitleLabel, searchField, searchMode, spacer, userLabel);
+        bar.getChildren().addAll(titleRow, searchRow);
         return bar;
     }
 
 
     private HBox buildStatsRow() {
-        HBox row = new HBox(16);
-        row.setPadding(new Insets(24, 24, 16, 24));
+        HBox row = new HBox(18);
+        row.setPadding(new Insets(26, 30, 18, 30));
 
         VBox c1 = statCard(totalBooksLbl,    "TOTAL BOOKS",     "📚", "#3B82F6");
         VBox c2 = statCard(activeMembersLbl, "ACTIVE MEMBERS",  "👥", "#10B981");
@@ -668,7 +692,7 @@ public class FirstPage extends Application {
     }
 
     private VBox statCard(Label valueLbl, String title, String icon, String color) {
-        VBox card = new VBox(8);
+        VBox card = new VBox(10);
         card.getStyleClass().add("stat-card");
 
         StackPane iconBox = new StackPane();
@@ -681,7 +705,10 @@ public class FirstPage extends Application {
         valueLbl.getStyleClass().add("stat-value");
         Label titleLbl = new Label(title);
         titleLbl.getStyleClass().add("stat-label");
-        card.getChildren().addAll(iconBox, valueLbl, titleLbl);
+        VBox text = new VBox(2, valueLbl, titleLbl);
+        HBox body = new HBox(14, iconBox, text);
+        body.setAlignment(Pos.CENTER_LEFT);
+        card.getChildren().add(body);
         return card;
     }
 
@@ -691,10 +718,11 @@ public class FirstPage extends Application {
         panel.getStyleClass().add("content-area");
 
         VBox section = new VBox(14);
-        section.setPadding(new Insets(0, 24, 24, 24));
+        section.setPadding(new Insets(0, 30, 30, 30));
         VBox.setVgrow(section, Priority.ALWAYS);
 
         HBox header = new HBox(10);
+        header.getStyleClass().add("section-header");
         header.setAlignment(Pos.CENTER_LEFT);
         Label title = new Label("Book Inventory");
         title.getStyleClass().add("section-title");
@@ -706,7 +734,10 @@ public class FirstPage extends Application {
         Button addBookBtn = new Button("+ Add Book");
         addBookBtn.getStyleClass().add("btn-primary");
         addBookBtn.setOnAction(e -> showAddBookDialog());
-        header.getChildren().addAll(title, sp, exportBtn, addBookBtn);
+        HBox actions = new HBox(10, exportBtn, addBookBtn);
+        actions.getStyleClass().add("action-group");
+        actions.setAlignment(Pos.CENTER_RIGHT);
+        header.getChildren().addAll(title, sp, actions);
 
         setupCatalogTable(catalogTable, true);
         catalogTable.getColumns().add(reviewsButtonCol(catalogTable));
@@ -719,32 +750,30 @@ public class FirstPage extends Application {
     }
 
     private VBox buildMembersPanel() {
-        VBox panel = new VBox(16);
+        VBox panel = new VBox(18);
         panel.getStyleClass().add("content-area");
-        panel.setPadding(new Insets(24));
+        panel.setPadding(new Insets(30));
         VBox.setVgrow(panel, Priority.ALWAYS);
 
-        HBox header = new HBox(12);
-        header.setAlignment(Pos.CENTER_LEFT);
+        VBox header = new VBox(14);
+        header.getStyleClass().add("section-header");
         Label title = new Label("Members");
         title.getStyleClass().add("section-title");
-        Region sp = new Region();
-        HBox.setHgrow(sp, Priority.ALWAYS);
 
         TextField nameField  = new TextField();
         nameField.setPromptText("Full name");
         nameField.getStyleClass().add("form-field");
-        nameField.setPrefWidth(130);
+        nameField.setPrefWidth(170);
 
         TextField emailField = new TextField();
         emailField.setPromptText("Email");
         emailField.getStyleClass().add("form-field");
-        emailField.setPrefWidth(160);
+        emailField.setPrefWidth(210);
 
         TextField passField = new TextField();
         passField.setPromptText("Password");
         passField.getStyleClass().add("form-field");
-        passField.setPrefWidth(110);
+        passField.setPrefWidth(150);
 
         ComboBox<String> roleBox = new ComboBox<>();
         roleBox.getItems().addAll("Member", "Librarian");
@@ -774,7 +803,11 @@ public class FirstPage extends Application {
             nameField.clear(); emailField.clear(); passField.clear();
             refreshAll();
         });
-        header.getChildren().addAll(title, sp, nameField, emailField, passField, roleBox, addBtn);
+        HBox registerRow = new HBox(12, nameField, emailField, passField, roleBox, addBtn);
+        registerRow.getStyleClass().add("control-row");
+        registerRow.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(emailField, Priority.ALWAYS);
+        header.getChildren().addAll(title, registerRow);
 
         setupMemberTable();
         VBox.setVgrow(memberTable, Priority.ALWAYS);
@@ -818,6 +851,8 @@ public class FirstPage extends Application {
         });
 
         HBox memberActions = new HBox(10, cancelBtn, deleteBtn);
+        memberActions.getStyleClass().add("action-group");
+        memberActions.setAlignment(Pos.CENTER_RIGHT);
 
         panel.getChildren().addAll(header, memberTable, memberActions);
         return panel;
@@ -851,9 +886,9 @@ public class FirstPage extends Application {
     }
 
     private VBox buildCirculationPanel() {
-        VBox panel = new VBox(14);
+        VBox panel = new VBox(18);
         panel.getStyleClass().add("content-area");
-        panel.setPadding(new Insets(24));
+        panel.setPadding(new Insets(30));
 
         Label title = new Label("Circulation");
         title.getStyleClass().add("section-title");
@@ -869,6 +904,7 @@ public class FirstPage extends Application {
         bookPicker.setPromptText("Select book (reserve)...");
 
         HBox pickers = new HBox(12, memberPicker, itemPicker, bookPicker);
+        pickers.getStyleClass().add("control-row");
         HBox.setHgrow(memberPicker, Priority.ALWAYS);
         HBox.setHgrow(itemPicker,   Priority.ALWAYS);
         HBox.setHgrow(bookPicker,   Priority.ALWAYS);
@@ -892,6 +928,8 @@ public class FirstPage extends Application {
         overdueBtn.setOnAction(e  -> { service.sendOverdueNotifications(); refreshAll(); setSummary("Overdue notices sent."); });
 
         HBox actions = new HBox(10, checkoutBtn, renewBtn, returnBtn, reserveBtn, overdueBtn);
+        actions.getStyleClass().add("action-group");
+        actions.setAlignment(Pos.CENTER_LEFT);
 
         summaryArea.setEditable(false);
         summaryArea.setPrefRowCount(2);
@@ -907,7 +945,9 @@ public class FirstPage extends Application {
         Label reservLabel = new Label("Pending Reservations");
         reservLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #1A1A2E;");
 
-        panel.getChildren().addAll(title, pickers, actions, summaryArea, lendLabel, lendingTable, reservLabel, reservationTable);
+        VBox controls = new VBox(12, pickers, actions, summaryArea);
+        controls.getStyleClass().add("control-panel");
+        panel.getChildren().addAll(title, controls, lendLabel, lendingTable, reservLabel, reservationTable);
         return panel;
     }
 
@@ -958,9 +998,9 @@ public class FirstPage extends Application {
     }
 
     private VBox buildNotificationsPanel() {
-        VBox panel = new VBox(16);
+        VBox panel = new VBox(18);
         panel.getStyleClass().add("content-area");
-        panel.setPadding(new Insets(24));
+        panel.setPadding(new Insets(30));
 
         Label title = new Label("Notifications & Fines");
         title.getStyleClass().add("section-title");
@@ -995,10 +1035,11 @@ public class FirstPage extends Application {
         panel.getStyleClass().add("content-area");
 
         VBox section = new VBox(14);
-        section.setPadding(new Insets(0, 24, 24, 24));
+        section.setPadding(new Insets(0, 30, 30, 30));
         VBox.setVgrow(section, Priority.ALWAYS);
 
         HBox header = new HBox(10);
+        header.getStyleClass().add("section-header");
         header.setAlignment(Pos.CENTER_LEFT);
         Label title = new Label("Book Catalog");
         title.getStyleClass().add("section-title");
@@ -1042,9 +1083,9 @@ public class FirstPage extends Application {
     }
 
     private VBox buildMyBooksPanel() {
-        VBox panel = new VBox(16);
+        VBox panel = new VBox(18);
         panel.getStyleClass().add("content-area");
-        panel.setPadding(new Insets(24));
+        panel.setPadding(new Insets(30));
 
         Label title = new Label("My Books");
         title.getStyleClass().add("section-title");
@@ -1071,6 +1112,7 @@ public class FirstPage extends Application {
         if (!memberActive) reserveBtn.setTooltip(new Tooltip("Active membership required to reserve books"));
 
         HBox reserveRow = new HBox(12, memberBookPicker, reserveBtn);
+        reserveRow.getStyleClass().add("control-row");
         HBox.setHgrow(memberBookPicker, Priority.ALWAYS);
 
         myFineLbl.setStyle("-fx-font-size: 13px; -fx-text-fill: #DC2626; -fx-font-weight: bold;");
@@ -1083,6 +1125,7 @@ public class FirstPage extends Application {
             }
         });
         HBox fineRow = new HBox(12, myFineLbl, myPayFineBtn);
+        fineRow.getStyleClass().add("action-group");
         fineRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
 
         Label checkoutsLabel = new Label("Currently Checked Out");
@@ -1153,14 +1196,16 @@ public class FirstPage extends Application {
         myReservationsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         myReservationsTable.setPlaceholder(new Label("No reservations."));
 
-        panel.getChildren().addAll(title, reserveRow, fineRow, checkoutsLabel, myCheckoutsTable, reservationsLabel, myReservationsTable);
+        VBox controls = new VBox(12, reserveRow, fineRow);
+        controls.getStyleClass().add("control-panel");
+        panel.getChildren().addAll(title, controls, checkoutsLabel, myCheckoutsTable, reservationsLabel, myReservationsTable);
         return panel;
     }
 
     private VBox buildMemberNotificationsPanel() {
-        VBox panel = new VBox(16);
+        VBox panel = new VBox(18);
         panel.getStyleClass().add("content-area");
-        panel.setPadding(new Insets(24));
+        panel.setPadding(new Insets(30));
 
         Label title = new Label("My Notifications");
         title.getStyleClass().add("section-title");
